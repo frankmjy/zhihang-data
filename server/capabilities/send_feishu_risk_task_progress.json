@@ -1,0 +1,100 @@
+{
+  "id": "send_feishu_risk_task_progress",
+  "pluginKey": "@official-plugins/send-feishu-message",
+  "pluginVersion": "1.0.10",
+  "name": "发送智航风险排查任务进度富文本消息",
+  "description": "向当前登录用户发送包含南通机房月度排查情况一览和风险状态异常记录图片的富文本飞书消息（图片以markdown格式嵌入）",
+  "icon": "",
+  "paramsSchema": {
+    "required": [
+      "currentUserId"
+    ],
+    "type": "object",
+    "properties": {
+      "checkChartImage": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array",
+        "format": "plugin-image-url",
+        "description": "排查率图表（单张图片URL，可为空）"
+      },
+      "riskTableImage": {
+        "format": "plugin-image-url",
+        "description": "风险状态表格（单张图片URL，可为空）",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "currentUserId": {
+        "type": "string",
+        "description": "当前登录用户的用户ID"
+      },
+      "auditChartImage": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array",
+        "format": "plugin-image-url",
+        "description": "审核率图表（单张图片URL，可为空）"
+      }
+    }
+  },
+  "formValue": {
+    "sender": "bot",
+    "msg_type": "post",
+    "title": {
+      "zh_cn": "智航风险排查任务进度"
+    },
+    "content": {
+      "zh_cn": {
+        "title": "智航风险排查任务进度",
+        "content": [
+          [
+            {
+              "text": "智航风险排查任务进度一览\n\n",
+              "tag": "text"
+            }
+          ],
+          [
+            {
+              "tag": "img",
+              "image_key": "{{input.auditChartImage[0]}}"
+            }
+          ],
+          [
+            {
+              "tag": "text",
+              "text": "\n"
+            }
+          ],
+          [
+            {
+              "tag": "img",
+              "image_key": "{{input.checkChartImage[0]}}"
+            }
+          ],
+          [
+            {
+              "text": "\n",
+              "tag": "text"
+            }
+          ],
+          [
+            {
+              "image_key": "{{input.riskTableImage[0]}}",
+              "tag": "img"
+            }
+          ]
+        ]
+      }
+    },
+    "receiverUserList": [
+      "{{input.currentUserId}}"
+    ]
+  },
+  "createdAt": 1768900760182,
+  "updatedAt": 1768980131596,
+  "createdBy": 7310140364520734723
+}
