@@ -111,6 +111,12 @@ const CHANGE_IMPORTANT_NOTIFY_SCHEDULES = parseDailyScheduleList(
   process.env.CHANGE_IMPORTANT_NOTIFY_SCHEDULES,
   ['16:05'],
 );
+const EXTRA_ABNORMAL_NOTIFY_ENABLED = parseBoolean(process.env.EXTRA_ABNORMAL_NOTIFY_ENABLED, true);
+const EXTRA_ABNORMAL_NOTIFY_CHAT_ID = String(
+  process.env.EXTRA_ABNORMAL_NOTIFY_CHAT_ID
+    || process.env.FEISHU_ABNORMAL_NOTIFY_CHAT_ID
+    || 'oc_38825452b566a9c8d5859d54eb31a64c',
+).trim();
 const DEFAULT_DRILL_AUTO_SYNC_TIME_LABELS = ['08:33'];
 const DEFAULT_EVENT_AUTO_SYNC_TIME_LABELS = ['08:37', '13:38', '16:08'];
 const DEFAULT_INSPECT_AUTO_SYNC_TIME_LABELS = ['07:00', '11:00', '17:00', '23:30'];
@@ -537,7 +543,7 @@ function createDrillFeishuClient() {
   });
 }
 
-function createEventFeishuClient() {
+function createEventFeishuClient(overrides = {}) {
   return new FeishuOpenApiClient({
     baseUrl: process.env.EVENT_FEISHU_OPEN_BASE_URL || process.env.FEISHU_OPEN_BASE_URL,
     appId: process.env.EVENT_FEISHU_APP_ID || process.env.FEISHU_APP_ID || '',
@@ -545,12 +551,12 @@ function createEventFeishuClient() {
     appToken: process.env.EVENT_FEISHU_BITABLE_APP_TOKEN || DEFAULT_EVENT_FEISHU_APP_TOKEN,
     tableId: process.env.EVENT_FEISHU_TABLE_ID || DEFAULT_EVENT_FEISHU_TABLE_ID,
     viewId: process.env.EVENT_FEISHU_VIEW_ID || DEFAULT_EVENT_FEISHU_VIEW_ID,
-    notifyChatId: process.env.EVENT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
-    notifyChatName: process.env.EVENT_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || '',
+    notifyChatId: overrides.notifyChatId ?? (process.env.EVENT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || ''),
+    notifyChatName: overrides.notifyChatName ?? (process.env.EVENT_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || ''),
   });
 }
 
-function createInspectFeishuClient() {
+function createInspectFeishuClient(overrides = {}) {
   return new FeishuOpenApiClient({
     baseUrl: process.env.INSPECT_FEISHU_OPEN_BASE_URL || process.env.FEISHU_OPEN_BASE_URL,
     appId: process.env.INSPECT_FEISHU_APP_ID || process.env.FEISHU_APP_ID || '',
@@ -558,9 +564,67 @@ function createInspectFeishuClient() {
     appToken: process.env.INSPECT_FEISHU_BITABLE_APP_TOKEN || DEFAULT_INSPECT_FEISHU_APP_TOKEN,
     tableId: process.env.INSPECT_FEISHU_TABLE_ID || DEFAULT_INSPECT_FEISHU_TABLE_ID,
     viewId: process.env.INSPECT_FEISHU_VIEW_ID || DEFAULT_INSPECT_FEISHU_VIEW_ID,
-    notifyChatId: process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
-    notifyChatName: process.env.INSPECT_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || '',
+    notifyChatId: overrides.notifyChatId ?? (process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || ''),
+    notifyChatName: overrides.notifyChatName ?? (process.env.INSPECT_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || ''),
   });
+}
+
+async function sendExtraAbnormalNotifyMessage({
+  moduleName,
+  summary,
+  notifyMessage,
+  createClient,
+  primaryChatId = '',
+  enabled = true,
+}) {
+  const label = moduleName || '异常提醒';
+  if (!enabled || !EXTRA_ABNORMAL_NOTIFY_ENABLED || !EXTRA_ABNORMAL_NOTIFY_CHAT_ID) {
+    return {
+      attempted: false,
+      success: false,
+      message: '',
+    };
+  }
+  if (!summary?.hasImportant) {
+    return {
+      attempted: false,
+      success: false,
+      message: '',
+    };
+  }
+  if (String(primaryChatId || '').trim() === EXTRA_ABNORMAL_NOTIFY_CHAT_ID) {
+    return {
+      attempted: false,
+      success: false,
+      message: '',
+    };
+  }
+  if (typeof createClient !== 'function') {
+    return {
+      attempted: false,
+      success: false,
+      message: '',
+    };
+  }
+
+  try {
+    const extraClient = createClient({
+      notifyChatId: EXTRA_ABNORMAL_NOTIFY_CHAT_ID,
+      notifyChatName: '',
+    });
+    await extraClient.sendMessageToChat(notifyMessage || summary.notifyMessage);
+    return {
+      attempted: true,
+      success: true,
+      message: `${label}额外会话通知已发送：${EXTRA_ABNORMAL_NOTIFY_CHAT_ID}`,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      success: false,
+      message: `${label}额外会话通知发送失败：${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 function getEventBitableWebUrl(viewIdOverride) {
@@ -5502,17 +5566,29 @@ async function runChangeAutoSyncOnce(runContext = {}) {
     }
 
     const importantNotifyResult = await sendChangeImportantNotifyMessage(summary, runContext);
+    const extraAbnormalNotifyResult = await sendExtraAbnormalNotifyMessage({
+      moduleName: '变更异常',
+      summary,
+      createClient: (overrides) => createChangeFeishuClient('basicData', overrides),
+      primaryChatId: process.env.CHANGE_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+      enabled: shouldNotify,
+    });
 
     changeAutoSyncState.lastSuccessAt = new Date().toISOString();
     changeAutoSyncState.lastInsertedCount = Number(syncResult.insertedCount || 0);
+    const notifyWarnings = [
+      importantNotifyResult.attempted && !importantNotifyResult.success ? importantNotifyResult.message : '',
+      extraAbnormalNotifyResult.attempted && !extraAbnormalNotifyResult.success ? extraAbnormalNotifyResult.message : '',
+    ].filter(Boolean).join('；');
+    const notifyMessages = [importantNotifyResult.message, extraAbnormalNotifyResult.message].filter(Boolean).join('；');
     changeAutoSyncState.lastError = syncResult.success
-      ? (importantNotifyResult.attempted && !importantNotifyResult.success ? importantNotifyResult.message : '')
+      ? notifyWarnings
       : (syncResult.message || '');
-    changeAutoSyncState.statusMessage = `完成，写入 ${changeAutoSyncState.lastInsertedCount} 条${importantNotifyResult.message ? `，${importantNotifyResult.message}` : ''}`;
+    changeAutoSyncState.statusMessage = `完成，写入 ${changeAutoSyncState.lastInsertedCount} 条${notifyMessages ? `，${notifyMessages}` : ''}`;
     const cleanupResult = await cleanupLightweightSyncCache('change');
 
     console.log(
-      `[change-auto-sync] completed schedule=${runContext.scheduleLabel || '--'} notifyAllowed=${shouldNotify} orders=${workOrders.length} successBasicData=${batchResult.successItems.length} failedBasicData=${batchResult.failedCount} inserted=${changeAutoSyncState.lastInsertedCount} notified=${Boolean(syncResult.notified)} importantNotify=${importantNotifyResult.attempted ? importantNotifyResult.success : 'skipped'} cacheCleanup=${cleanupResult.success !== false} message=${String(syncResult.message || '').replace(/\s+/g, ' ')}`,
+      `[change-auto-sync] completed schedule=${runContext.scheduleLabel || '--'} notifyAllowed=${shouldNotify} orders=${workOrders.length} successBasicData=${batchResult.successItems.length} failedBasicData=${batchResult.failedCount} inserted=${changeAutoSyncState.lastInsertedCount} notified=${Boolean(syncResult.notified)} importantNotify=${importantNotifyResult.attempted ? importantNotifyResult.success : 'skipped'} extraAbnormalNotify=${extraAbnormalNotifyResult.attempted ? extraAbnormalNotifyResult.success : 'skipped'} cacheCleanup=${cleanupResult.success !== false} message=${String([syncResult.message, notifyMessages].filter(Boolean).join('；')).replace(/\s+/g, ' ')}`,
     );
   } catch (error) {
     changeAutoSyncState.lastError = error instanceof Error ? error.message : String(error);
@@ -5977,6 +6053,73 @@ function parseInspectDate(value) {
   return parsed;
 }
 
+function formatInspectNoticeDateTime(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '--';
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function getInspectNextShiftDueDate(planStartDate) {
+  if (!(planStartDate instanceof Date) || Number.isNaN(planStartDate.getTime())) {
+    return null;
+  }
+
+  const minutes = planStartDate.getHours() * 60 + planStartDate.getMinutes();
+  const dueDate = new Date(planStartDate);
+  dueDate.setSeconds(0, 0);
+
+  const setDueTime = (dayOffset, hour, minute) => {
+    dueDate.setDate(planStartDate.getDate() + dayOffset);
+    dueDate.setHours(hour, minute, 0, 0);
+    return dueDate;
+  };
+
+  if (minutes < 9 * 60) {
+    return setDueTime(0, 9, 0);
+  }
+  if (minutes < 15 * 60) {
+    return setDueTime(0, 15, 0);
+  }
+  if (minutes < 20 * 60) {
+    return setDueTime(0, 20, 0);
+  }
+  return setDueTime(1, 2, 30);
+}
+
+function getInspectMissedUnsubmittedDetail(record, now = new Date()) {
+  if (String(record?.submitTime || '').trim()) {
+    return null;
+  }
+
+  const planStartDate = parseInspectDate(record?.planStartDatetime);
+  if (!planStartDate) {
+    return null;
+  }
+
+  const dueDate = getInspectNextShiftDueDate(planStartDate);
+  if (!dueDate || now < dueDate) {
+    return null;
+  }
+
+  return {
+    record,
+    dueDate,
+    planStartDate,
+    dueText: formatInspectNoticeDateTime(dueDate),
+  };
+}
+
+function isMissedUnsubmittedInspectRecord(record, now = new Date()) {
+  return Boolean(getInspectMissedUnsubmittedDetail(record, now));
+}
+
 function isInspectPlanOverlappingDay(record, now = new Date()) {
   const start = parseInspectDate(record?.planStartDatetime);
   const end = parseInspectDate(record?.planEndDatetime) || start;
@@ -6010,28 +6153,42 @@ function isOverdueInspectRecord(record) {
     || Boolean(String(record?.overdueReason || '').trim());
 }
 
-function getInspectAbnormalCount(record) {
-  return getInspectStatValue(record, 'yc') + (isOverdueInspectRecord(record) ? 1 : 0);
+function getInspectAbnormalCount(record, now = new Date()) {
+  const hasAbnormalWorkOrder = isOverdueInspectRecord(record) || isMissedUnsubmittedInspectRecord(record, now);
+  return getInspectStatValue(record, 'yc') + (hasAbnormalWorkOrder ? 1 : 0);
 }
 
 function isTodayUnsubmittedInspectRecord(record, now = new Date()) {
   return !String(record?.submitTime || '').trim() && isInspectPlanOverlappingDay(record, now);
 }
 
-function formatInspectTodayUnsubmittedSummary(records, limit = 20) {
+function formatInspectUnsubmittedSummary(records, limit = 20, options = {}) {
   const items = Array.isArray(records) ? records : [];
   const maxItems = Math.max(1, Number(limit) || 20);
   const lines = items.slice(0, maxItems).map((record, index) => {
     const building = String(record?.buildingName || '').trim() || '未识别楼栋';
     const user = String(record?.userName || '').trim() || '未分配';
     const planStart = String(record?.planStartDatetime || '').trim() || '--';
-    return `${index + 1}. ${building}｜${user}｜${planStart}`;
+    const missedDetail = options.includeMissedDue ? getInspectMissedUnsubmittedDetail(record, options.now || new Date()) : null;
+    const dueText = missedDetail ? `｜已过下一班 ${missedDetail.dueText}` : '';
+    return `${index + 1}. ${building}｜${user}｜${planStart}${dueText}`;
   });
   if (items.length > maxItems) {
     lines.push(`另有 ${items.length - maxItems} 单未展开`);
   }
 
   return lines.join('\n');
+}
+
+function formatInspectTodayUnsubmittedSummary(records, limit = 20) {
+  return formatInspectUnsubmittedSummary(records, limit);
+}
+
+function formatInspectMissedUnsubmittedSummary(records, now = new Date(), limit = 20) {
+  return formatInspectUnsubmittedSummary(records, limit, {
+    includeMissedDue: true,
+    now,
+  });
 }
 
 function createEmptyInspectFeishuFields() {
@@ -6088,7 +6245,7 @@ function buildInspectSyncSummary(records, options = {}) {
       pending: 0,
       abnormal: 0,
     };
-    const abnormal = getInspectAbnormalCount(record);
+    const abnormal = getInspectAbnormalCount(record, now);
 
     incrementCounter(statusCounter, statusText);
     pointTotal += getInspectStatValue(record, 'total');
@@ -6105,33 +6262,42 @@ function buildInspectSyncSummary(records, options = {}) {
   const todayUnsubmittedRecords = items
     .filter((record) => isTodayUnsubmittedInspectRecord(record, now))
     .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
+  const missedUnsubmittedRecords = items
+    .filter((record) => isMissedUnsubmittedInspectRecord(record, now))
+    .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
   const todayUnsubmittedSummary = formatInspectTodayUnsubmittedSummary(todayUnsubmittedRecords);
+  const missedUnsubmittedSummary = formatInspectMissedUnsubmittedSummary(missedUnsubmittedRecords, now);
   const statusSummary = formatCounterSummary(statusCounter, 0);
   const buildingSummary = formatInspectBuildingSummary(buildingStatsMap);
   const syncTime = formatChangeSyncTime();
   const rangeText = `${options.rangeStart || ''} - ${options.rangeEnd || ''}`.trim();
   const linkUrl = getInspectBitableWebUrl();
   const tips = [
+    missedUnsubmittedRecords.length > 0 ? `逾班未提交 ${missedUnsubmittedRecords.length} 单，已计入异常项，请优先处理` : '',
     todayUnsubmittedRecords.length > 0 ? `今日未提交 ${todayUnsubmittedRecords.length} 单，请优先跟进` : '',
     pendingCount > 0 ? `本月待巡检 ${pendingCount} 单，请关注计划执行` : '',
-    abnormalTotal > 0 ? `本月异常点 ${abnormalTotal} 个（含逾期工单），请关注巡检结果` : '',
+    abnormalTotal > 0 ? `本月异常点 ${abnormalTotal} 个（含逾期/逾班未提交工单），请关注巡检结果` : '',
   ].filter(Boolean).join('\n');
   const distributionLine = [
     statusSummary ? `工单状态 ${statusSummary}` : '',
     `点位总数 ${pointTotal}`,
-    `异常点 ${abnormalTotal}（含逾期）`,
+    `异常点 ${abnormalTotal}（含逾期/逾班未提交）`,
   ].filter(Boolean).join('；');
 
   return {
+    hasImportant: abnormalTotal > 0,
+    abnormalTotal,
+    missedUnsubmittedCount: missedUnsubmittedRecords.length,
     notifyMessage: buildSyncCardMessage({
       title: '巡检拉取同步',
-      template: abnormalTotal > 0 ? 'red' : ((todayUnsubmittedRecords.length + pendingCount) > 0 ? 'yellow' : 'green'),
+      template: (abnormalTotal + missedUnsubmittedRecords.length) > 0 ? 'red' : ((todayUnsubmittedRecords.length + pendingCount) > 0 ? 'yellow' : 'green'),
       fallbackLines: [
         '【巡检拉取同步】',
         `同步时间：${syncTime}`,
         rangeText ? `本月范围：${rangeText}` : '',
         `覆盖工单：${items.length} 条`,
         distributionLine ? `分布概览：${distributionLine}` : '',
+        missedUnsubmittedSummary ? `异常未提交：\n${missedUnsubmittedSummary}` : '',
         todayUnsubmittedSummary ? `今日未提交：\n${todayUnsubmittedSummary}` : '',
         tips ? `提示：\n${tips}` : '',
         buildingSummary ? `楼栋进展：\n${buildingSummary}` : '',
@@ -6142,17 +6308,19 @@ function buildInspectSyncSummary(records, options = {}) {
         rangeText ? `**本月范围**：${escapeFeishuCardMarkdown(rangeText)}` : '',
         `**覆盖工单**：${items.length} 条`,
         distributionLine ? `**分布概览**：${escapeFeishuCardMarkdown(distributionLine)}` : '',
+        missedUnsubmittedRecords.length > 0 ? `**异常未提交**：${missedUnsubmittedRecords.length} 单` : '',
         todayUnsubmittedRecords.length > 0 ? `**今日未提交**：${todayUnsubmittedRecords.length} 单` : '',
         `**多维表**：[打开](${linkUrl})`,
       ],
       sections: [
+        { title: '异常未提交', content: escapeFeishuCardMarkdown(missedUnsubmittedSummary) },
         { title: '今日未提交', content: escapeFeishuCardMarkdown(todayUnsubmittedSummary) },
         { title: '提示', content: escapeFeishuCardMarkdown(tips) },
         { title: '楼栋进展', content: escapeFeishuCardMarkdown(buildingSummary) },
       ],
     }),
     successMessage: ({ insertedCount, deletedCount }) => (
-      `巡检本月同步完成：删除旧记录 ${deletedCount} 条，覆盖写入 ${insertedCount} 条，本月完成 ${completedCount} 条，待巡检 ${pendingCount} 条，今日未提交 ${todayUnsubmittedRecords.length} 条，异常点 ${abnormalTotal}（含逾期）`
+      `巡检本月同步完成：删除旧记录 ${deletedCount} 条，覆盖写入 ${insertedCount} 条，本月完成 ${completedCount} 条，待巡检 ${pendingCount} 条，今日未提交 ${todayUnsubmittedRecords.length} 条，逾班未提交 ${missedUnsubmittedRecords.length} 条，异常点 ${abnormalTotal}（含逾期/逾班未提交）`
     ),
   };
 }
@@ -6197,6 +6365,17 @@ async function executeInspectSyncPipeline(options = {}) {
         successMessage: summary.successMessage,
       },
     );
+  }
+
+  const extraAbnormalNotifyResult = await sendExtraAbnormalNotifyMessage({
+    moduleName: '巡检异常',
+    summary,
+    createClient: createInspectFeishuClient,
+    primaryChatId: process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+    enabled: options.notify !== false,
+  });
+  if (extraAbnormalNotifyResult.message) {
+    syncResult.message = [syncResult.message, extraAbnormalNotifyResult.message].filter(Boolean).join('；');
   }
 
   const insertedCount = Number(syncResult.insertedCount || 0);
@@ -7441,6 +7620,16 @@ async function executeEventFullSync(options = {}) {
       successMessage: ({ insertedCount }) => `事件全量同步完成：覆盖 ${insertedCount} 条事件数据到飞书多维表`,
     },
   );
+  const extraAbnormalNotifyResult = await sendExtraAbnormalNotifyMessage({
+    moduleName: '事件异常',
+    summary,
+    createClient: createEventFeishuClient,
+    primaryChatId: process.env.EVENT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+    enabled: options.notify !== false,
+  });
+  if (extraAbnormalNotifyResult.message) {
+    syncResult.message = [syncResult.message, extraAbnormalNotifyResult.message].filter(Boolean).join('；');
+  }
   const insertedCount = Number(syncResult.insertedCount || 0);
   const dataSuccess = insertedCount === fetchResult.records.length;
   const nextState = dataSuccess
@@ -7607,6 +7796,16 @@ async function executeEventIncrementalSync(options = {}) {
         `事件增量同步完成：按产生/发生时间拉取近30天 ${fetchedCount} 条，删除飞书近30天旧记录 ${deletedCount} 条，写入 ${insertedCount} 条`
       ),
     });
+    const extraAbnormalNotifyResult = await sendExtraAbnormalNotifyMessage({
+      moduleName: '事件异常',
+      summary,
+      createClient: createEventFeishuClient,
+      primaryChatId: process.env.EVENT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+      enabled: options.notify !== false,
+    });
+    if (extraAbnormalNotifyResult.message) {
+      syncResult.message = [syncResult.message, extraAbnormalNotifyResult.message].filter(Boolean).join('；');
+    }
     const dataSuccess = Boolean(syncResult.success) && Number(syncResult.failedCount || 0) === 0;
     const nextState = dataSuccess
       ? mergeEventSyncState(fetchResult.records, {
