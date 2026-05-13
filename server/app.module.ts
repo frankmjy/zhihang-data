@@ -11,6 +11,7 @@ import { DrillFeishuSyncModule } from './modules/drill-feishu-sync/drill-feishu-
 import { EventBrowserFetchModule } from './modules/event-browser-fetch/event-browser-fetch.module';
 import { ExtractionModule } from './modules/extraction/extraction.module';
 import { FeishuSyncModule } from './modules/feishu-sync/feishu-sync.module';
+import { InspectBrowserFetchModule } from './modules/inspect-browser-fetch/inspect-browser-fetch.module';
 import { ViewModule } from './modules/view/view.module';
 import { WeatherModule } from './modules/weather/weather.module';
 
@@ -28,6 +29,7 @@ import { WeatherModule } from './modules/weather/weather.module';
     EventBrowserFetchModule,
     ExtractionModule,
     FeishuSyncModule,
+    InspectBrowserFetchModule,
     WeatherModule,
     // ====== @route-section: business-modules END ======
 

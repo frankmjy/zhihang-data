@@ -2,7 +2,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { NavLink } from '@lark-apaas/client-toolkit/components/NavLink';
 import { TruncatedTitle } from '@lark-apaas/client-toolkit/components/TruncatedTitle';
 import { useAppInfo } from '@lark-apaas/client-toolkit/hooks/useAppInfo';
-import { ActivitySquare, BellRing, ClipboardList, Menu, ShieldCheck, X, type LucideProps } from 'lucide-react';
+import { ActivitySquare, BellRing, ClipboardCheck, ClipboardList, Menu, ShieldCheck, X, type LucideProps } from 'lucide-react';
 import { FC, ReactNode, useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 
@@ -21,6 +21,7 @@ const menu: NavItem[] = [
   { title: '变更进展', url: '/change', icon: ClipboardList },
   { title: '演练推进', url: '/drill', icon: ActivitySquare },
   { title: '事件追踪', url: '/event', icon: BellRing },
+  { title: '巡检拉取', url: '/inspect', icon: ClipboardCheck },
 ];
 
 const APP_NAME = '智航任务同步进度一览';
@@ -111,12 +112,12 @@ function HeaderPanel({
 function DesktopTopBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div className="grid w-full grid-cols-[minmax(250px,360px)_minmax(430px,560px)_minmax(640px,1fr)] items-center gap-3 px-8 py-3">
+      <div className="grid w-full grid-cols-[minmax(250px,360px)_minmax(430px,560px)_minmax(684px,1fr)] items-center gap-3 px-8 py-3">
         <div className="flex min-w-0 items-center">
           <NavBrand />
         </div>
 
-        <nav className="grid w-full grid-cols-4 items-center gap-1 justify-self-center rounded-lg border border-slate-200 bg-slate-50 p-1">
+        <nav className="grid w-full grid-cols-5 items-center gap-1 justify-self-center rounded-lg border border-slate-200 bg-slate-50 p-1">
           {menu.map((item) => (
             item.url ? (
               <NavLink key={item.title} to={item.url} className="block">
@@ -138,7 +139,7 @@ function DesktopTopBar() {
         </nav>
 
         <div className="flex min-w-0 items-center justify-end gap-2 justify-self-end">
-          <ServiceStatus className="w-[386px]" />
+          <ServiceStatus className="w-[430px]" />
           <HeaderPanel className="w-[126px] justify-center">
             <TimeDisplay className="min-w-0 items-center text-center" />
           </HeaderPanel>

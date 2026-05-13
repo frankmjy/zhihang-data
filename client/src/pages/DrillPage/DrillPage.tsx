@@ -20,9 +20,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-const DRILL_LIST_URL = 'https://drill.example.internal/api/emergencydrill/exercisePlan/queryExercisePlanList';
-const DRILL_EVALUATION_URL = 'https://drill.example.internal/api/event/eventOrder/selEventMsg';
-const DRILL_EVALUATION_DETAIL_URL = 'https://drill.example.internal/api/emergencydrill/exerciseEvaluation/selExerciseEvaluationTemplate';
+const DRILL_LIST_URL = 'https://emergencydrill.meta42.indc.vnet.com/api/emergencydrill/exercisePlan/queryExercisePlanList';
+const DRILL_EVALUATION_URL = 'https://emergencydrill.meta42.indc.vnet.com/api/event/eventOrder/selEventMsg';
+const DRILL_EVALUATION_DETAIL_URL = 'https://emergencydrill.meta42.indc.vnet.com/api/emergencydrill/exerciseEvaluation/selExerciseEvaluationTemplate';
 const DRILL_API_PAGE_SIZE = 100;
 const DRILL_TABLE_PAGE_SIZE = 15;
 const DRILL_PAGE_CONCURRENCY = 6;

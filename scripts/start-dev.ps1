@@ -34,6 +34,16 @@ function Get-DotEnvValue {
   return (($line -split '=', 2)[1]).Trim()
 }
 
+function Normalize-LegacyDrillOrigin {
+  param([string]$Value)
+
+  if ($Value -eq 'https://drill.example.internal') {
+    return 'https://emergencydrill.meta42.indc.vnet.com'
+  }
+
+  return $Value
+}
+
 function Get-Listener {
   param([int]$Port)
   Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
@@ -213,12 +223,13 @@ function Open-AppBrowser {
   $debugPort = [int](Get-DotEnvValue -Key 'RISK_BROWSER_DEBUG_PORT' -Default '9222')
   $intranetOrigin = Get-DotEnvValue -Key 'RISK_INTRANET_ORIGIN' -Default 'https://risk.example.internal'
   $changeIntranetOrigin = Get-DotEnvValue -Key 'CHANGE_INTRANET_ORIGIN' -Default 'https://change.example.internal'
-  $drillIntranetOrigin = Get-DotEnvValue -Key 'DRILL_INTRANET_ORIGIN' -Default 'https://drill.example.internal'
+  $drillIntranetOrigin = Normalize-LegacyDrillOrigin (Get-DotEnvValue -Key 'DRILL_INTRANET_ORIGIN' -Default 'https://emergencydrill.meta42.indc.vnet.com')
   $eventIntranetOrigin = Get-DotEnvValue -Key 'EVENT_INTRANET_ORIGIN' -Default 'https://event.example.internal'
+  $inspectIntranetOrigin = Get-DotEnvValue -Key 'INSPECT_INTRANET_ORIGIN' -Default 'https://inspect2.meta42.indc.vnet.com'
   $profileDir = Join-Path $RunDir 'browser-profile'
   New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
 
-  $browserTargets = @($intranetOrigin, $changeIntranetOrigin, $drillIntranetOrigin, $eventIntranetOrigin, $Url) |
+  $browserTargets = @($intranetOrigin, $changeIntranetOrigin, $drillIntranetOrigin, $eventIntranetOrigin, $inspectIntranetOrigin, $Url) |
     Where-Object { $_ } |
     Select-Object -Unique
 
@@ -232,7 +243,7 @@ function Open-AppBrowser {
   $process = Start-Process -FilePath $browserPath -ArgumentList $browserArgs -PassThru
   Set-Content -LiteralPath (Join-Path $RunDir 'browser.pid') -Value $process.Id
   Write-Host "Browser opened with debug port $debugPort. PID: $($process.Id)"
-  Write-Host "If intranet data fetching fails, complete login in the risk, change, drill, and event intranet tabs opened by this browser window."
+  Write-Host "If intranet data fetching fails, complete login in the risk, change, drill, event, and inspect intranet tabs opened by this browser window."
 }
 
 function Add-DirectoryToPath {

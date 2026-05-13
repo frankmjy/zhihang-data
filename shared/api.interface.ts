@@ -243,6 +243,53 @@ export interface SyncEventRecordsResp {
   message?: string;
 }
 
+export interface InspectRecordDTO {
+  id?: string;
+  executeCycle?: string;
+  planName?: string;
+  planId?: number | string;
+  planStartDatetime?: string;
+  planEndDatetime?: string;
+  execStartTime?: string | null;
+  execEndTime?: string | null;
+  submitTime?: string | null;
+  orderReceiveTime?: string | null;
+  jobExecuteStatus?: string | null;
+  jobExecuteStatusName?: string | null;
+  userName?: string | null;
+  datacenterName?: string;
+  locations?: string | null;
+  buildingCode?: string;
+  buildingName?: string;
+  overdueReason?: string | null;
+  params?: {
+    statMap?: Record<string, number | string | unknown>;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface InspectSyncRunResp {
+  success: boolean;
+  mode: 'monthly' | string;
+  fetchedCount: number;
+  total: number;
+  insertedCount: number;
+  deletedCount: number;
+  failedCount: number;
+  notified: boolean;
+  totalFromApi?: number;
+  totalPages?: number;
+  rangeStart?: string;
+  rangeEnd?: string;
+  fetchedAt?: string;
+  durationMs?: number;
+  records?: InspectRecordDTO[];
+  previewLimit?: number;
+  bitableUrl?: string;
+  message?: string;
+}
+
 export type EventSyncMode = 'full' | 'incremental';
 
 export interface EventSyncProgressDTO {
@@ -400,12 +447,14 @@ export interface ServiceHealthResponseDTO {
   changeIntranetOrigin?: string;
   drillIntranetOrigin?: string;
   eventIntranetOrigin?: string;
+  inspectIntranetOrigin?: string;
   browserDebugPort: number;
   keepAlive?: KeepAliveStatusDTO;
   autoSync?: AutoSyncStatusDTO;
   changeAutoSync?: AutoSyncStatusDTO;
   drillAutoSync?: AutoSyncStatusDTO;
   eventAutoSync?: AutoSyncStatusDTO;
+  inspectAutoSync?: AutoSyncStatusDTO;
 }
 
 export type WeatherType = 'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'partlyCloudy';

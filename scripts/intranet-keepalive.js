@@ -525,8 +525,9 @@ function buildConfig(parsedCli) {
   const defaultOrigins = [
     env('RISK_INTRANET_ORIGIN', 'https://risk.example.internal'),
     env('CHANGE_INTRANET_ORIGIN', 'https://change.example.internal'),
-    env('DRILL_INTRANET_ORIGIN', 'https://drill.example.internal'),
+    env('DRILL_INTRANET_ORIGIN', 'https://emergencydrill.meta42.indc.vnet.com'),
     env('EVENT_INTRANET_ORIGIN', 'https://event.example.internal'),
+    env('INSPECT_INTRANET_ORIGIN', 'https://inspect2.meta42.indc.vnet.com'),
   ];
   const cliOrigins = parsedCli.origins.length > 0 ? parsedCli.origins : null;
   const origins = normalizeOrigins(cliOrigins || parseList(
@@ -676,7 +677,10 @@ function normalizeOrigins(values) {
 function normalizeOrigin(value) {
   if (!value) return '';
   try {
-    return new URL(String(value).trim()).origin;
+    const origin = new URL(String(value).trim()).origin;
+    return origin === 'https://drill.example.internal'
+      ? 'https://emergencydrill.meta42.indc.vnet.com'
+      : origin;
   } catch {
     return '';
   }
@@ -685,7 +689,12 @@ function normalizeOrigin(value) {
 function normalizeUrl(value) {
   if (!value) return '';
   try {
-    return new URL(String(value).trim()).href;
+    const url = new URL(String(value).trim());
+    if (url.origin === 'https://drill.example.internal') {
+      url.protocol = 'https:';
+      url.host = 'emergencydrill.meta42.indc.vnet.com';
+    }
+    return url.href;
   } catch {
     return '';
   }

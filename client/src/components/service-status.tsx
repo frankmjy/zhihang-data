@@ -52,12 +52,14 @@ function getRunningSyncTitle(
   changeAutoSync?: AutoSyncStatusDTO,
   drillAutoSync?: AutoSyncStatusDTO,
   eventAutoSync?: AutoSyncStatusDTO,
+  inspectAutoSync?: AutoSyncStatusDTO,
 ) {
   const runningLabels = [
     riskAutoSync?.running ? '风险同步中' : '',
     changeAutoSync?.running ? '变更同步中' : '',
     drillAutoSync?.running ? '演练同步中' : '',
     eventAutoSync?.running ? '事件拉取中' : '',
+    inspectAutoSync?.running ? '巡检同步中' : '',
   ].filter(Boolean);
 
   if (runningLabels.length === 0) {
@@ -66,6 +68,7 @@ function getRunningSyncTitle(
       changeAutoSync?.queued ? '变更排队中' : '',
       drillAutoSync?.queued ? '演练排队中' : '',
       eventAutoSync?.queued ? '事件排队中' : '',
+      inspectAutoSync?.queued ? '巡检排队中' : '',
     ].filter(Boolean);
 
     if (queuedLabels.length === 0) {
@@ -135,6 +138,7 @@ export function ServiceStatus({ className = '' }: ServiceStatusProps) {
         changeAutoSync: '--',
         drillAutoSync: '--',
         eventAutoSync: '--',
+        inspectAutoSync: '--',
       };
     }
 
@@ -150,6 +154,7 @@ export function ServiceStatus({ className = '' }: ServiceStatusProps) {
         changeAutoSync: '无法读取',
         drillAutoSync: '无法读取',
         eventAutoSync: '无法读取',
+        inspectAutoSync: '无法读取',
       };
     }
 
@@ -158,11 +163,12 @@ export function ServiceStatus({ className = '' }: ServiceStatusProps) {
     const changeAutoSync = health.changeAutoSync;
     const drillAutoSync = health.drillAutoSync;
     const eventAutoSync = health.eventAutoSync;
+    const inspectAutoSync = health.inspectAutoSync;
     const hasPollingError = Boolean(error);
     const hasKeepAliveError = Boolean(keepAlive?.lastError);
     const hasKeepAliveWarning = Boolean(keepAlive?.lastWarning);
     const keepAliveStatus = keepAlive?.status || '';
-    const runningSyncTitle = getRunningSyncTitle(autoSync, changeAutoSync, drillAutoSync, eventAutoSync);
+    const runningSyncTitle = getRunningSyncTitle(autoSync, changeAutoSync, drillAutoSync, eventAutoSync, inspectAutoSync);
     if (hasPollingError) {
       return {
         icon: <AlertCircle className="h-3.5 w-3.5" />,
@@ -175,6 +181,7 @@ export function ServiceStatus({ className = '' }: ServiceStatusProps) {
         changeAutoSync: '状态延迟',
         drillAutoSync: '状态延迟',
         eventAutoSync: '状态延迟',
+        inspectAutoSync: '状态延迟',
       };
     }
 
@@ -215,6 +222,7 @@ export function ServiceStatus({ className = '' }: ServiceStatusProps) {
       changeAutoSync: formatScheduleText(changeAutoSync),
       drillAutoSync: formatScheduleText(drillAutoSync),
       eventAutoSync: formatScheduleText(eventAutoSync),
+      inspectAutoSync: formatScheduleText(inspectAutoSync),
     };
   }, [error, health, loading]);
 
@@ -223,11 +231,12 @@ export function ServiceStatus({ className = '' }: ServiceStatusProps) {
     { label: '变更定时', value: summary.changeAutoSync },
     { label: '演练定时', value: summary.drillAutoSync },
     { label: '事件定时', value: summary.eventAutoSync },
+    { label: '巡检定时', value: summary.inspectAutoSync },
   ];
 
   return (
-    <div className={`grid min-w-[386px] grid-cols-[140px_238px] gap-2 ${className}`}>
-      <div className="flex min-h-[60px] flex-col justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+    <div className={`grid min-w-[430px] grid-cols-[140px_282px] gap-2 ${className}`}>
+      <div className="flex min-h-[76px] flex-col justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
         <div
           className={`inline-flex max-w-full items-center gap-1.5 self-start rounded-full border px-2 py-0.5 text-xs font-medium ${summary.toneClass}`}
           title={summary.statusMessage}
@@ -247,7 +256,7 @@ export function ServiceStatus({ className = '' }: ServiceStatusProps) {
         </div>
       </div>
 
-      <div className="flex min-h-[60px] flex-col justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <div className="flex min-h-[76px] flex-col justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
         <div className="text-xs font-medium leading-4 text-slate-600">定时同步</div>
         <div className="grid gap-0.5 text-xs leading-4 text-slate-600">
           {rows.map((row) => (

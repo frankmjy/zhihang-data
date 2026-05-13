@@ -13,12 +13,15 @@ const ROOT = path.resolve(__dirname, '..');
 const ENV_PATH = path.join(ROOT, '.env');
 const DEFAULT_ORIGIN = 'https://risk.example.internal';
 const DEFAULT_CHANGE_ORIGIN = 'https://change.example.internal';
-const DEFAULT_DRILL_ORIGIN = 'https://drill.example.internal';
+const LEGACY_DRILL_ORIGIN = 'https://drill.example.internal';
+const DEFAULT_DRILL_ORIGIN = 'https://emergencydrill.meta42.indc.vnet.com';
 const DEFAULT_EVENT_ORIGIN = 'https://event.example.internal';
+const DEFAULT_INSPECT_ORIGIN = 'https://inspect2.meta42.indc.vnet.com';
 const DEFAULT_DRILL_LIST_URL = `${DEFAULT_DRILL_ORIGIN}/api/emergencydrill/exercisePlan/queryExercisePlanList`;
 const DEFAULT_DRILL_EVALUATION_URL = `${DEFAULT_DRILL_ORIGIN}/api/event/eventOrder/selEventMsg`;
 const DEFAULT_DRILL_EVALUATION_DETAIL_URL = `${DEFAULT_DRILL_ORIGIN}/api/emergencydrill/exerciseEvaluation/selExerciseEvaluationTemplate`;
 const DEFAULT_EVENT_LIST_URL = `${DEFAULT_EVENT_ORIGIN}/api/event/eventOrder/selEventMsg`;
+const DEFAULT_INSPECT_LIST_URL = `${DEFAULT_INSPECT_ORIGIN}/api/inspect/inspection/job/list`;
 const DEFAULT_CHANGE_FEISHU_APP_TOKEN = '';
 const DEFAULT_CHANGE_FEISHU_TABLE_ID = '';
 const DEFAULT_CHANGE_FEISHU_VIEW_ID = '';
@@ -28,6 +31,9 @@ const DEFAULT_DRILL_FEISHU_VIEW_ID = '';
 const DEFAULT_EVENT_FEISHU_APP_TOKEN = '';
 const DEFAULT_EVENT_FEISHU_TABLE_ID = '';
 const DEFAULT_EVENT_FEISHU_VIEW_ID = '';
+const DEFAULT_INSPECT_FEISHU_APP_TOKEN = 'IrIibPkUOa6udGsMhu2cbOqhnWg';
+const DEFAULT_INSPECT_FEISHU_TABLE_ID = 'tblTXHrDH4Mv0971';
+const DEFAULT_INSPECT_FEISHU_VIEW_ID = 'vewgfEzEZl';
 const DEFAULT_RISK_PATH = '/api/ab-bpm/biz/bizCustGrid/view/list_fxgl_xcydfxpcmxsjlb';
 const DEFAULT_RECORD_LIST_PATH = '/api/ab-bpm/biz/bizCustGrid/view/fxgl_xcydfxpcjlsjlb';
 
@@ -40,14 +46,16 @@ const CLIENT_DEV_PORT = Number(process.env.CLIENT_DEV_PORT || 8080);
 const DEBUG_PORT = Number(process.env.RISK_BROWSER_DEBUG_PORT || 9222);
 const INTRANET_ORIGIN = trimTrailingSlash(process.env.RISK_INTRANET_ORIGIN || DEFAULT_ORIGIN);
 const CHANGE_INTRANET_ORIGIN = trimTrailingSlash(process.env.CHANGE_INTRANET_ORIGIN || DEFAULT_CHANGE_ORIGIN);
-const DRILL_INTRANET_ORIGIN = trimTrailingSlash(process.env.DRILL_INTRANET_ORIGIN || DEFAULT_DRILL_ORIGIN);
+const DRILL_INTRANET_ORIGIN = normalizeLegacyDrillOrigin(process.env.DRILL_INTRANET_ORIGIN || DEFAULT_DRILL_ORIGIN);
 const EVENT_INTRANET_ORIGIN = trimTrailingSlash(process.env.EVENT_INTRANET_ORIGIN || DEFAULT_EVENT_ORIGIN);
+const INSPECT_INTRANET_ORIGIN = trimTrailingSlash(process.env.INSPECT_INTRANET_ORIGIN || DEFAULT_INSPECT_ORIGIN);
 const RISK_API_PATH = process.env.RISK_API_PATH || DEFAULT_RISK_PATH;
 const RISK_RECORD_LIST_API_PATH = process.env.RISK_RECORD_LIST_API_PATH || DEFAULT_RECORD_LIST_PATH;
-const DRILL_LIST_URL = process.env.DRILL_LIST_URL || DEFAULT_DRILL_LIST_URL;
-const DRILL_EVALUATION_URL = process.env.DRILL_EVALUATION_URL || DEFAULT_DRILL_EVALUATION_URL;
-const DRILL_EVALUATION_DETAIL_URL = process.env.DRILL_EVALUATION_DETAIL_URL || DEFAULT_DRILL_EVALUATION_DETAIL_URL;
+const DRILL_LIST_URL = normalizeLegacyDrillUrl(process.env.DRILL_LIST_URL || DEFAULT_DRILL_LIST_URL);
+const DRILL_EVALUATION_URL = normalizeLegacyDrillUrl(process.env.DRILL_EVALUATION_URL || DEFAULT_DRILL_EVALUATION_URL);
+const DRILL_EVALUATION_DETAIL_URL = normalizeLegacyDrillUrl(process.env.DRILL_EVALUATION_DETAIL_URL || DEFAULT_DRILL_EVALUATION_DETAIL_URL);
 const EVENT_LIST_URL = process.env.EVENT_LIST_URL || DEFAULT_EVENT_LIST_URL;
+const INSPECT_LIST_URL = process.env.INSPECT_LIST_URL || DEFAULT_INSPECT_LIST_URL;
 const DRILL_EVALUATION_CREATOR = process.env.DRILL_EVALUATION_CREATOR || '';
 const BROWSER_PROFILE_DIR = process.env.RISK_BROWSER_PROFILE_DIR || path.join(ROOT, '.run', 'browser-profile');
 const BROWSER_START_WAIT_MS = normalizeInterval(process.env.RISK_BROWSER_START_WAIT_MS, 10 * 1000);
@@ -56,7 +64,7 @@ const KEEPALIVE_INTERVAL_MS = normalizeInterval(process.env.RISK_KEEPALIVE_INTER
 const KEEPALIVE_START_DELAY_MS = normalizeInterval(process.env.RISK_KEEPALIVE_START_DELAY_MS, 30 * 1000);
 const KEEPALIVE_ORIGINS = parseOriginList(
   process.env.RISK_KEEPALIVE_ORIGINS,
-  [INTRANET_ORIGIN, CHANGE_INTRANET_ORIGIN, DRILL_INTRANET_ORIGIN, EVENT_INTRANET_ORIGIN],
+  [INTRANET_ORIGIN, CHANGE_INTRANET_ORIGIN, DRILL_INTRANET_ORIGIN, EVENT_INTRANET_ORIGIN, INSPECT_INTRANET_ORIGIN],
 );
 const KEEPALIVE_SYNC_GUARD_MS = normalizePositiveInteger(process.env.RISK_KEEPALIVE_SYNC_GUARD_MS, 2 * 60 * 1000, 0, 30 * 60 * 1000);
 const KEEPALIVE_SKIP_RETRY_MS = normalizePositiveInteger(process.env.RISK_KEEPALIVE_SKIP_RETRY_MS, 60 * 1000, 5 * 1000, 10 * 60 * 1000);
@@ -105,6 +113,7 @@ const CHANGE_IMPORTANT_NOTIFY_SCHEDULES = parseDailyScheduleList(
 );
 const DEFAULT_DRILL_AUTO_SYNC_TIME_LABELS = ['08:33'];
 const DEFAULT_EVENT_AUTO_SYNC_TIME_LABELS = ['08:37', '13:38', '16:08'];
+const DEFAULT_INSPECT_AUTO_SYNC_TIME_LABELS = ['07:00', '11:00', '17:00', '23:30'];
 const CHANGE_AUTO_SYNC_PAGE_SIZE = normalizePositiveInteger(process.env.CHANGE_AUTO_SYNC_PAGE_SIZE, 100, 10, 200);
 const CHANGE_AUTO_SYNC_LIST_CONCURRENCY = normalizePositiveInteger(process.env.CHANGE_AUTO_SYNC_LIST_CONCURRENCY, 4, 1, 10);
 const CHANGE_AUTO_SYNC_BASIC_DATA_CONCURRENCY = normalizePositiveInteger(process.env.CHANGE_AUTO_SYNC_BASIC_DATA_CONCURRENCY, 8, 1, 20);
@@ -169,6 +178,17 @@ const EVENT_FULL_SYNC_START_DATE_FIELD = process.env.EVENT_FULL_SYNC_START_DATE_
 const EVENT_FULL_SYNC_END_DATE_FIELD = process.env.EVENT_FULL_SYNC_END_DATE_FIELD || 'endDate';
 const EVENT_SYNC_STATE_PATH = path.resolve(ROOT, process.env.EVENT_SYNC_STATE_PATH || path.join('.run', 'event-sync-state.json'));
 const EVENT_SYNC_PREVIEW_LIMIT = normalizePositiveInteger(process.env.EVENT_SYNC_PREVIEW_LIMIT, 300, 0, 2000);
+const INSPECT_DATACENTER_CODE = process.env.INSPECT_DATACENTER_CODE || '0.5.2.2.1.1';
+const INSPECT_AUTO_SYNC_ENABLED = parseBoolean(process.env.INSPECT_AUTO_SYNC_ENABLED, true);
+const INSPECT_AUTO_SYNC_SCHEDULES = parseDailyScheduleList(
+  process.env.INSPECT_AUTO_SYNC_SCHEDULES,
+  DEFAULT_INSPECT_AUTO_SYNC_TIME_LABELS,
+);
+const INSPECT_AUTO_SYNC_NOTIFY_ENABLED = parseBoolean(process.env.INSPECT_AUTO_SYNC_NOTIFY_ENABLED, true);
+const INSPECT_AUTO_SYNC_PAGE_SIZE = normalizePositiveInteger(process.env.INSPECT_AUTO_SYNC_PAGE_SIZE, 15, 1, 500);
+const INSPECT_AUTO_SYNC_LIST_CONCURRENCY = normalizePositiveInteger(process.env.INSPECT_AUTO_SYNC_LIST_CONCURRENCY, 6, 1, 20);
+const INSPECT_AUTO_SYNC_MAX_PAGES = normalizePositiveInteger(process.env.INSPECT_AUTO_SYNC_MAX_PAGES, 1000, 1, 5000);
+const INSPECT_SYNC_PREVIEW_LIMIT = normalizePositiveInteger(process.env.INSPECT_SYNC_PREVIEW_LIMIT, 300, 0, 2000);
 const SYNC_LIGHTWEIGHT_CACHE_CLEANUP_ENABLED = parseBoolean(process.env.SYNC_LIGHTWEIGHT_CACHE_CLEANUP_ENABLED, true);
 const SYNC_LIGHTWEIGHT_CACHE_DIRS = parseRuntimePathList(
   process.env.SYNC_LIGHTWEIGHT_CACHE_DIRS,
@@ -240,6 +260,18 @@ const eventAutoSyncState = {
   lastInsertedCount: 0,
   nextRunAt: '',
   scheduleTimes: EVENT_AUTO_SYNC_SCHEDULES.map((item) => item.label),
+};
+const inspectAutoSyncState = {
+  running: false,
+  queued: false,
+  timer: null,
+  statusMessage: '',
+  lastAttemptAt: '',
+  lastSuccessAt: '',
+  lastError: '',
+  lastInsertedCount: 0,
+  nextRunAt: '',
+  scheduleTimes: INSPECT_AUTO_SYNC_SCHEDULES.map((item) => item.label),
 };
 const eventSyncProgressState = {
   running: false,
@@ -318,6 +350,15 @@ function trimTrailingSlash(value) {
   return value.replace(/\/+$/, '');
 }
 
+function normalizeLegacyDrillOrigin(value) {
+  const origin = trimTrailingSlash(String(value || DEFAULT_DRILL_ORIGIN));
+  return origin === LEGACY_DRILL_ORIGIN ? DEFAULT_DRILL_ORIGIN : origin;
+}
+
+function normalizeLegacyDrillUrl(value) {
+  return String(value || '').replace(new RegExp(`^${LEGACY_DRILL_ORIGIN.replace(/\./g, '\\.')}(?=/|$)`), DEFAULT_DRILL_ORIGIN);
+}
+
 function parseOriginList(rawValue, fallbackValues = []) {
   const rawEntries = String(rawValue || '')
     .split(/[\s,;|]+/)
@@ -328,7 +369,7 @@ function parseOriginList(rawValue, fallbackValues = []) {
   return entries
     .map((value) => {
       try {
-        return trimTrailingSlash(new URL(String(value || '').trim()).origin);
+        return normalizeLegacyDrillOrigin(new URL(String(value || '').trim()).origin);
       } catch {
         return '';
       }
@@ -509,6 +550,19 @@ function createEventFeishuClient() {
   });
 }
 
+function createInspectFeishuClient() {
+  return new FeishuOpenApiClient({
+    baseUrl: process.env.INSPECT_FEISHU_OPEN_BASE_URL || process.env.FEISHU_OPEN_BASE_URL,
+    appId: process.env.INSPECT_FEISHU_APP_ID || process.env.FEISHU_APP_ID || '',
+    appSecret: process.env.INSPECT_FEISHU_APP_SECRET || process.env.FEISHU_APP_SECRET || '',
+    appToken: process.env.INSPECT_FEISHU_BITABLE_APP_TOKEN || DEFAULT_INSPECT_FEISHU_APP_TOKEN,
+    tableId: process.env.INSPECT_FEISHU_TABLE_ID || DEFAULT_INSPECT_FEISHU_TABLE_ID,
+    viewId: process.env.INSPECT_FEISHU_VIEW_ID || DEFAULT_INSPECT_FEISHU_VIEW_ID,
+    notifyChatId: process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+    notifyChatName: process.env.INSPECT_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || '',
+  });
+}
+
 function getEventBitableWebUrl(viewIdOverride) {
   const appToken = process.env.EVENT_FEISHU_BITABLE_APP_TOKEN || DEFAULT_EVENT_FEISHU_APP_TOKEN;
   const tableId = process.env.EVENT_FEISHU_TABLE_ID || DEFAULT_EVENT_FEISHU_TABLE_ID;
@@ -516,6 +570,19 @@ function getEventBitableWebUrl(viewIdOverride) {
     ? process.env.EVENT_FEISHU_VIEW_ID || DEFAULT_EVENT_FEISHU_VIEW_ID
     : viewIdOverride;
   const origin = trimTrailingSlash(process.env.EVENT_FEISHU_BITABLE_WEB_ORIGIN || process.env.FEISHU_BITABLE_WEB_ORIGIN || 'https://www.feishu.cn');
+  const url = new URL(`/base/${appToken}`, origin);
+  url.searchParams.set('table', tableId);
+  if (viewId) {
+    url.searchParams.set('view', viewId);
+  }
+  return url.toString();
+}
+
+function getInspectBitableWebUrl() {
+  const appToken = process.env.INSPECT_FEISHU_BITABLE_APP_TOKEN || DEFAULT_INSPECT_FEISHU_APP_TOKEN;
+  const tableId = process.env.INSPECT_FEISHU_TABLE_ID || DEFAULT_INSPECT_FEISHU_TABLE_ID;
+  const viewId = process.env.INSPECT_FEISHU_VIEW_ID || DEFAULT_INSPECT_FEISHU_VIEW_ID;
+  const origin = trimTrailingSlash(process.env.INSPECT_FEISHU_BITABLE_WEB_ORIGIN || process.env.FEISHU_BITABLE_WEB_ORIGIN || 'https://vnet.feishu.cn');
   const url = new URL(`/base/${appToken}`, origin);
   url.searchParams.set('table', tableId);
   if (viewId) {
@@ -750,6 +817,10 @@ function shouldNotifyChangeAutoSyncRun(runContext = {}) {
 
 function shouldNotifyEventAutoSyncRun(runContext = {}) {
   return EVENT_AUTO_SYNC_NOTIFY_ENABLED && !runContext?.catchUp;
+}
+
+function shouldNotifyInspectAutoSyncRun() {
+  return INSPECT_AUTO_SYNC_NOTIFY_ENABLED;
 }
 
 async function runConcurrentWorkers({ items, concurrency, worker }) {
@@ -1137,6 +1208,7 @@ function getDebugBrowserTargets(origin = INTRANET_ORIGIN) {
     CHANGE_INTRANET_ORIGIN,
     DRILL_INTRANET_ORIGIN,
     EVENT_INTRANET_ORIGIN,
+    INSPECT_INTRANET_ORIGIN,
     `http://localhost:${CLIENT_DEV_PORT}`,
   ]
     .filter(Boolean)
@@ -1737,6 +1809,23 @@ async function fetchEventPayloadInBrowser({ url, method = 'POST', payload }) {
   const targetUrl = String(url || EVENT_LIST_URL);
   if (!targetUrl.startsWith(EVENT_INTRANET_ORIGIN)) {
     throw new Error(`只允许请求事件系统域名：${EVENT_INTRANET_ORIGIN}`);
+  }
+
+  return fetchChangePayloadInBrowser({
+    url: targetUrl,
+    method,
+    payload,
+  });
+}
+
+async function fetchInspectPayloadInBrowser({ url, method = 'GET', payload }) {
+  const targetUrl = String(url || '');
+  if (!targetUrl) {
+    throw new Error('缺少巡检接口 URL');
+  }
+
+  if (!targetUrl.startsWith(INSPECT_INTRANET_ORIGIN)) {
+    throw new Error(`只允许请求巡检系统域名：${INSPECT_INTRANET_ORIGIN}`);
   }
 
   return fetchChangePayloadInBrowser({
@@ -5660,6 +5749,529 @@ async function fetchDrillExercisePlansForAutoSync() {
   return mergedRecords;
 }
 
+const INSPECT_FEISHU_FIELD_NAMES = [
+  '序号',
+  '工单名称',
+  '数据中心',
+  '楼栋',
+  '位置信息',
+  '巡检人',
+  '巡检类型',
+  '计划区间',
+  '提交时间',
+  '接单时间',
+  '巡检结果',
+  '工单状态',
+  '逾期原因',
+];
+
+function formatInspectDateTime(date, endOfDay = false) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day} ${endOfDay ? '23:59:59' : '00:00:00'}`;
+}
+
+function getInspectCurrentMonthRange(now = new Date()) {
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {
+    start: formatInspectDateTime(start),
+    end: formatInspectDateTime(end, true),
+  };
+}
+
+function createInspectListSyncPayload(pageNum = 1, pageSize = INSPECT_AUTO_SYNC_PAGE_SIZE, overrides = {}) {
+  const monthRange = getInspectCurrentMonthRange();
+  return {
+    pageNum,
+    pageSize,
+    jobInfo: '',
+    jobExecuteStatus: '',
+    datacenterCode: INSPECT_DATACENTER_CODE,
+    buildingCode: '',
+    withinDay: '',
+    userName: '',
+    executeCycle: '',
+    startDateTime: '',
+    endDateTime: '',
+    planStartDatetime: monthRange.start,
+    planEndDatetime: monthRange.end,
+    startSubmitTime: '',
+    endSubmitTime: '',
+    ...overrides,
+  };
+}
+
+function buildInspectListUrl(pageNum = 1, payload = createInspectListSyncPayload(pageNum)) {
+  const url = new URL(INSPECT_LIST_URL);
+  Object.entries(payload || {}).forEach(([key, value]) => {
+    url.searchParams.set(key, String(value ?? ''));
+  });
+  return url.toString();
+}
+
+function normalizeInspectRows(payload) {
+  if (Array.isArray(payload?.rows)) return payload.rows;
+  if (Array.isArray(payload?.data?.rows)) return payload.data.rows;
+  if (Array.isArray(payload?.data?.records)) return payload.data.records;
+  if (Array.isArray(payload?.data?.list)) return payload.data.list;
+  return [];
+}
+
+function parseInspectJobPage(payload, pageNum, pageSize = INSPECT_AUTO_SYNC_PAGE_SIZE) {
+  const codeText = String(payload?.code ?? '').trim();
+  if (codeText && codeText !== '200' && codeText !== '0') {
+    throw new Error(payload?.message || payload?.msg || `巡检任务列表第 ${pageNum} 页返回失败：${codeText}`);
+  }
+  if (payload?.success === false) {
+    throw new Error(payload?.message || payload?.msg || `巡检任务列表第 ${pageNum} 页返回失败`);
+  }
+
+  const records = normalizeInspectRows(payload);
+  const total = Number(
+    payload?.total
+      ?? payload?.data?.total
+      ?? payload?.data?.totalCount
+      ?? payload?.data?.totalRecords
+      ?? payload?.data?.count
+      ?? records.length,
+  );
+  const rawPages = Number(payload?.data?.pages ?? payload?.data?.totalPages ?? 0);
+  const totalPages = Number.isFinite(rawPages) && rawPages > 0
+    ? Math.max(1, Math.ceil(rawPages))
+    : Number.isFinite(total) && total > 0
+      ? Math.max(1, Math.ceil(total / pageSize))
+      : 1;
+
+  return {
+    records,
+    total: Number.isFinite(total) && total > 0 ? total : records.length,
+    totalPages,
+  };
+}
+
+async function fetchInspectJobsForCurrentMonth() {
+  const range = getInspectCurrentMonthRange();
+  const firstPayload = createInspectListSyncPayload(1, INSPECT_AUTO_SYNC_PAGE_SIZE, {
+    planStartDatetime: range.start,
+    planEndDatetime: range.end,
+  });
+  const firstResult = await fetchInspectPayloadInBrowser({
+    url: buildInspectListUrl(1, firstPayload),
+    method: 'GET',
+    payload: firstPayload,
+  });
+  const firstPage = parseInspectJobPage(firstResult.data, 1, INSPECT_AUTO_SYNC_PAGE_SIZE);
+  console.log(`[inspect-sync] page=1 totalPages=${firstPage.totalPages} total=${firstPage.total} records=${firstPage.records.length} range=${range.start}~${range.end}`);
+  if (firstPage.totalPages > INSPECT_AUTO_SYNC_MAX_PAGES) {
+    throw new Error(`巡检任务接口总页数 ${firstPage.totalPages} 超过安全上限 ${INSPECT_AUTO_SYNC_MAX_PAGES}，已停止拉取`);
+  }
+
+  const allRecords = [...firstPage.records];
+  if (firstPage.totalPages > 1) {
+    const remainingPages = Array.from({ length: firstPage.totalPages - 1 }, (_, index) => index + 2);
+    const pageResults = await runConcurrentWorkers({
+      items: remainingPages,
+      concurrency: INSPECT_AUTO_SYNC_LIST_CONCURRENCY,
+      worker: async (pageNum) => {
+        const payload = createInspectListSyncPayload(pageNum, INSPECT_AUTO_SYNC_PAGE_SIZE, {
+          planStartDatetime: range.start,
+          planEndDatetime: range.end,
+        });
+        const pageResult = await fetchInspectPayloadInBrowser({
+          url: buildInspectListUrl(pageNum, payload),
+          method: 'GET',
+          payload,
+        });
+        const pageData = parseInspectJobPage(pageResult.data, pageNum, INSPECT_AUTO_SYNC_PAGE_SIZE);
+        console.log(`[inspect-sync] page=${pageNum} totalPages=${pageData.totalPages} records=${pageData.records.length}`);
+        return {
+          pageNum,
+          pageData,
+        };
+      },
+    });
+
+    pageResults
+      .sort((left, right) => left.pageNum - right.pageNum)
+      .forEach(({ pageData }) => {
+        allRecords.push(...pageData.records);
+      });
+  }
+
+  return {
+    records: allRecords,
+    total: firstPage.total,
+    totalPages: firstPage.totalPages,
+    rangeStart: range.start,
+    rangeEnd: range.end,
+  };
+}
+
+function getInspectStatMap(record) {
+  return record?.params?.statMap || {};
+}
+
+function toInspectNumber(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function getInspectStatValue(record, key) {
+  return toInspectNumber(getInspectStatMap(record)[key]);
+}
+
+function getInspectCycleText(value) {
+  const mapping = {
+    day: '日常巡检',
+    week: '周巡检',
+    month: '月度巡检',
+    quarter: '季度巡检',
+    year: '年度巡检',
+  };
+  const key = String(value || '').trim();
+  return mapping[key] || key;
+}
+
+function formatInspectPlanTime(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[ T](\d{1,2}):(\d{1,2})/);
+  if (!match) return text;
+  const [, year, month, day, hour, minute] = match;
+  return `${year}/${month.padStart(2, '0')}/${day.padStart(2, '0')} ${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+}
+
+function formatInspectPlanRange(record) {
+  const start = formatInspectPlanTime(record?.planStartDatetime);
+  const end = formatInspectPlanTime(record?.planEndDatetime);
+  if (start && end) return `${start}-${end}`;
+  return start || end || '';
+}
+
+function formatInspectResult(record) {
+  const total = getInspectStatValue(record, 'total');
+  const normal = getInspectStatValue(record, 'zc');
+  const abnormal = getInspectStatValue(record, 'yc');
+  if (total <= 0 && normal <= 0 && abnormal <= 0) {
+    return '';
+  }
+
+  return `总:${total} 正常:${normal} 异常:${abnormal}`;
+}
+
+function getInspectStatusText(record) {
+  return String(record?.jobExecuteStatusName || record?.jobExecuteStatus || '').trim();
+}
+
+function parseInspectDate(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+
+  const normalized = text.replace(' ', 'T').replace(/\//g, '-');
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function isInspectPlanOverlappingDay(record, now = new Date()) {
+  const start = parseInspectDate(record?.planStartDatetime);
+  const end = parseInspectDate(record?.planEndDatetime) || start;
+  if (!start && !end) return false;
+
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(now);
+  dayEnd.setHours(23, 59, 59, 999);
+  const rangeStart = start || end;
+  const rangeEnd = end || start;
+  return rangeStart <= dayEnd && rangeEnd >= dayStart;
+}
+
+function isCompletedInspectRecord(record) {
+  const status = getInspectStatusText(record);
+  return Boolean(record?.submitTime) || status.includes('完成') || status.includes('已');
+}
+
+function isPendingInspectRecord(record) {
+  const status = getInspectStatusText(record);
+  const code = String(record?.jobExecuteStatus || '').toLowerCase();
+  return status.includes('待') || code.includes('unplayed');
+}
+
+function isOverdueInspectRecord(record) {
+  const status = getInspectStatusText(record);
+  const code = String(record?.jobExecuteStatus || '').toLowerCase();
+  return status.includes('逾期')
+    || code.includes('overdue')
+    || Boolean(String(record?.overdueReason || '').trim());
+}
+
+function getInspectAbnormalCount(record) {
+  return getInspectStatValue(record, 'yc') + (isOverdueInspectRecord(record) ? 1 : 0);
+}
+
+function isTodayUnsubmittedInspectRecord(record, now = new Date()) {
+  return !String(record?.submitTime || '').trim() && isInspectPlanOverlappingDay(record, now);
+}
+
+function formatInspectTodayUnsubmittedSummary(records, limit = 20) {
+  const items = Array.isArray(records) ? records : [];
+  const maxItems = Math.max(1, Number(limit) || 20);
+  const lines = items.slice(0, maxItems).map((record, index) => {
+    const building = String(record?.buildingName || '').trim() || '未识别楼栋';
+    const user = String(record?.userName || '').trim() || '未分配';
+    const planStart = String(record?.planStartDatetime || '').trim() || '--';
+    return `${index + 1}. ${building}｜${user}｜${planStart}`;
+  });
+  if (items.length > maxItems) {
+    lines.push(`另有 ${items.length - maxItems} 单未展开`);
+  }
+
+  return lines.join('\n');
+}
+
+function createEmptyInspectFeishuFields() {
+  return Object.fromEntries(INSPECT_FEISHU_FIELD_NAMES.map((fieldName) => [fieldName, '']));
+}
+
+function mapInspectJobToFeishuFields(record, index = 0) {
+  const item = record || {};
+  return {
+    序号: String(index + 1),
+    工单名称: String(item.planName || ''),
+    数据中心: String(item.datacenterName || ''),
+    楼栋: String(item.buildingName || ''),
+    位置信息: String(item.locations || ''),
+    巡检人: String(item.userName || ''),
+    巡检类型: getInspectCycleText(item.executeCycle),
+    计划区间: formatInspectPlanRange(item),
+    提交时间: String(item.submitTime || ''),
+    接单时间: String(item.orderReceiveTime || item.execStartTime || ''),
+    巡检结果: formatInspectResult(item),
+    工单状态: getInspectStatusText(item),
+    逾期原因: String(item.overdueReason || ''),
+  };
+}
+
+function formatInspectBuildingSummary(statsMap) {
+  return getOrderedDrillBuildingLabels(statsMap)
+    .map((label) => {
+      const stats = statsMap.get(label) || { total: 0, completed: 0, pending: 0, abnormal: 0 };
+      return `${label}：工单 ${stats.total}，完成 ${stats.completed}，待巡检 ${stats.pending}，异常点 ${stats.abnormal}`;
+    })
+    .join('\n');
+}
+
+function buildInspectSyncSummary(records, options = {}) {
+  const items = Array.isArray(records) ? records : [];
+  const now = new Date();
+  const statusCounter = new Map();
+  const buildingStatsMap = new Map(RISK_BUILDING_SUMMARY_ORDER.map((label) => [label, {
+    total: 0,
+    completed: 0,
+    pending: 0,
+    abnormal: 0,
+  }]));
+
+  let pointTotal = 0;
+  let abnormalTotal = 0;
+  items.forEach((record) => {
+    const statusText = getInspectStatusText(record) || '未知状态';
+    const buildingLabel = normalizeRiskBuildingLabel(record?.buildingName) || String(record?.buildingName || '').trim() || '未识别楼栋';
+    const stats = buildingStatsMap.get(buildingLabel) || {
+      total: 0,
+      completed: 0,
+      pending: 0,
+      abnormal: 0,
+    };
+    const abnormal = getInspectAbnormalCount(record);
+
+    incrementCounter(statusCounter, statusText);
+    pointTotal += getInspectStatValue(record, 'total');
+    abnormalTotal += abnormal;
+    stats.total += 1;
+    stats.abnormal += abnormal;
+    if (isCompletedInspectRecord(record)) stats.completed += 1;
+    if (isPendingInspectRecord(record)) stats.pending += 1;
+    buildingStatsMap.set(buildingLabel, stats);
+  });
+
+  const pendingCount = items.filter(isPendingInspectRecord).length;
+  const completedCount = items.filter(isCompletedInspectRecord).length;
+  const todayUnsubmittedRecords = items
+    .filter((record) => isTodayUnsubmittedInspectRecord(record, now))
+    .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
+  const todayUnsubmittedSummary = formatInspectTodayUnsubmittedSummary(todayUnsubmittedRecords);
+  const statusSummary = formatCounterSummary(statusCounter, 0);
+  const buildingSummary = formatInspectBuildingSummary(buildingStatsMap);
+  const syncTime = formatChangeSyncTime();
+  const rangeText = `${options.rangeStart || ''} - ${options.rangeEnd || ''}`.trim();
+  const linkUrl = getInspectBitableWebUrl();
+  const tips = [
+    todayUnsubmittedRecords.length > 0 ? `今日未提交 ${todayUnsubmittedRecords.length} 单，请优先跟进` : '',
+    pendingCount > 0 ? `本月待巡检 ${pendingCount} 单，请关注计划执行` : '',
+    abnormalTotal > 0 ? `本月异常点 ${abnormalTotal} 个（含逾期工单），请关注巡检结果` : '',
+  ].filter(Boolean).join('\n');
+  const distributionLine = [
+    statusSummary ? `工单状态 ${statusSummary}` : '',
+    `点位总数 ${pointTotal}`,
+    `异常点 ${abnormalTotal}（含逾期）`,
+  ].filter(Boolean).join('；');
+
+  return {
+    notifyMessage: buildSyncCardMessage({
+      title: '巡检拉取同步',
+      template: abnormalTotal > 0 ? 'red' : ((todayUnsubmittedRecords.length + pendingCount) > 0 ? 'yellow' : 'green'),
+      fallbackLines: [
+        '【巡检拉取同步】',
+        `同步时间：${syncTime}`,
+        rangeText ? `本月范围：${rangeText}` : '',
+        `覆盖工单：${items.length} 条`,
+        distributionLine ? `分布概览：${distributionLine}` : '',
+        todayUnsubmittedSummary ? `今日未提交：\n${todayUnsubmittedSummary}` : '',
+        tips ? `提示：\n${tips}` : '',
+        buildingSummary ? `楼栋进展：\n${buildingSummary}` : '',
+        `多维表：${linkUrl}`,
+      ],
+      overviewLines: [
+        `**同步时间**：${escapeFeishuCardMarkdown(syncTime)}`,
+        rangeText ? `**本月范围**：${escapeFeishuCardMarkdown(rangeText)}` : '',
+        `**覆盖工单**：${items.length} 条`,
+        distributionLine ? `**分布概览**：${escapeFeishuCardMarkdown(distributionLine)}` : '',
+        todayUnsubmittedRecords.length > 0 ? `**今日未提交**：${todayUnsubmittedRecords.length} 单` : '',
+        `**多维表**：[打开](${linkUrl})`,
+      ],
+      sections: [
+        { title: '今日未提交', content: escapeFeishuCardMarkdown(todayUnsubmittedSummary) },
+        { title: '提示', content: escapeFeishuCardMarkdown(tips) },
+        { title: '楼栋进展', content: escapeFeishuCardMarkdown(buildingSummary) },
+      ],
+    }),
+    successMessage: ({ insertedCount, deletedCount }) => (
+      `巡检本月同步完成：删除旧记录 ${deletedCount} 条，覆盖写入 ${insertedCount} 条，本月完成 ${completedCount} 条，待巡检 ${pendingCount} 条，今日未提交 ${todayUnsubmittedRecords.length} 条，异常点 ${abnormalTotal}（含逾期）`
+    ),
+  };
+}
+
+async function executeInspectSyncPipeline(options = {}) {
+  const startedAt = Date.now();
+  const fetchResult = await fetchInspectJobsForCurrentMonth();
+  const inspectFeishuClient = createInspectFeishuClient();
+  const summary = buildInspectSyncSummary(fetchResult.records, {
+    rangeStart: fetchResult.rangeStart,
+    rangeEnd: fetchResult.rangeEnd,
+  });
+
+  let syncResult;
+  if (fetchResult.records.length === 0) {
+    await inspectFeishuClient.ensureFields([{ fields: createEmptyInspectFeishuFields() }]);
+    const deleteResult = await inspectFeishuClient.deleteAllRecords();
+    let notified = false;
+    let message = `巡检本月接口已拉取，但没有可同步记录，已确认字段并清空旧数据 ${Number(deleteResult.deletedCount || 0)} 条`;
+    if (options.notify !== false) {
+      try {
+        await inspectFeishuClient.sendMessageToChat(summary.notifyMessage, options.chatName);
+        notified = true;
+        message = `${message}，群通知已发送`;
+      } catch (error) {
+        message = `${message}，但群通知发送失败：${inspectFeishuClient.explainChatError(error)}`;
+      }
+    }
+    syncResult = {
+      success: Boolean(deleteResult.success),
+      insertedCount: 0,
+      deletedCount: Number(deleteResult.deletedCount || 0),
+      notified,
+      message,
+    };
+  } else {
+    syncResult = await inspectFeishuClient.replaceTableRecords(
+      fetchResult.records.map((record, index) => ({ fields: mapInspectJobToFeishuFields(record, index) })),
+      {
+        notify: options.notify,
+        notifyMessage: summary.notifyMessage,
+        successMessage: summary.successMessage,
+      },
+    );
+  }
+
+  const insertedCount = Number(syncResult.insertedCount || 0);
+  const dataSuccess = fetchResult.records.length === 0
+    ? Boolean(syncResult.success)
+    : insertedCount === fetchResult.records.length;
+  const cacheCleanup = dataSuccess ? await cleanupLightweightSyncCache('inspect') : null;
+
+  return {
+    success: dataSuccess,
+    mode: 'monthly',
+    fetchedCount: fetchResult.records.length,
+    total: fetchResult.records.length,
+    insertedCount,
+    deletedCount: Number(syncResult.deletedCount || 0),
+    failedCount: Math.max(fetchResult.records.length - insertedCount, 0),
+    notified: Boolean(syncResult.notified),
+    totalFromApi: Number(fetchResult.total || 0),
+    totalPages: Number(fetchResult.totalPages || 0),
+    rangeStart: fetchResult.rangeStart,
+    rangeEnd: fetchResult.rangeEnd,
+    fetchedAt: new Date().toISOString(),
+    durationMs: Date.now() - startedAt,
+    records: fetchResult.records.slice(0, INSPECT_SYNC_PREVIEW_LIMIT),
+    previewLimit: INSPECT_SYNC_PREVIEW_LIMIT,
+    cacheCleanup,
+    bitableUrl: getInspectBitableWebUrl(),
+    message: syncResult.message || '',
+  };
+}
+
+async function runInspectAutoSyncOnce(runContext = {}) {
+  if (!INSPECT_AUTO_SYNC_ENABLED || inspectAutoSyncState.running) {
+    return;
+  }
+
+  inspectAutoSyncState.running = true;
+  inspectAutoSyncState.queued = false;
+  inspectAutoSyncState.lastAttemptAt = new Date().toISOString();
+  inspectAutoSyncState.lastError = '';
+  inspectAutoSyncState.statusMessage = '正在拉取巡检本月数据并覆盖飞书';
+
+  try {
+    const shouldNotify = shouldNotifyInspectAutoSyncRun(runContext);
+    const syncResult = await executeInspectSyncPipeline({ notify: shouldNotify });
+    if (!syncResult.success) {
+      throw new Error(syncResult.message || '巡检本月同步飞书失败');
+    }
+
+    inspectAutoSyncState.lastSuccessAt = new Date().toISOString();
+    inspectAutoSyncState.lastInsertedCount = Number(syncResult.insertedCount || 0);
+    inspectAutoSyncState.lastError = '';
+    inspectAutoSyncState.statusMessage = `完成，拉取 ${syncResult.fetchedCount || 0} 条，写入 ${inspectAutoSyncState.lastInsertedCount} 条`;
+
+    console.log(`[inspect-auto-sync] completed schedule=${runContext.scheduleLabel || '--'} notifyAllowed=${shouldNotify} fetched=${syncResult.fetchedCount || 0} deleted=${syncResult.deletedCount || 0} inserted=${inspectAutoSyncState.lastInsertedCount} notified=${Boolean(syncResult.notified)} cacheCleanup=${syncResult.cacheCleanup?.success !== false} message=${String(syncResult.message || '').replace(/\s+/g, ' ')}`);
+  } catch (error) {
+    inspectAutoSyncState.lastError = error instanceof Error ? error.message : String(error);
+    inspectAutoSyncState.statusMessage = inspectAutoSyncState.lastError;
+    console.warn(`[inspect-auto-sync] failed: ${inspectAutoSyncState.lastError}`);
+  } finally {
+    inspectAutoSyncState.running = false;
+  }
+}
+
+function scheduleNextInspectAutoSync() {
+  scheduleRecurringSyncTask({
+    enabled: INSPECT_AUTO_SYNC_ENABLED,
+    state: inspectAutoSyncState,
+    tag: 'inspect-auto-sync',
+    scheduleEntries: INSPECT_AUTO_SYNC_SCHEDULES,
+    runTask: runInspectAutoSyncOnce,
+    disabledMessage: 'disabled by INSPECT_AUTO_SYNC_ENABLED=false',
+  });
+}
+
 async function fetchDrillEvaluationEventsForAutoSync() {
   const firstResult = await fetchDrillPayloadInBrowser({
     url: DRILL_EVALUATION_URL,
@@ -7163,6 +7775,57 @@ async function handleEventBrowserFetch(req, res) {
   }
 }
 
+async function handleInspectBrowserFetch(req, res) {
+  try {
+    const body = await readRequestJson(req);
+    const { data, target, fetchResult, requestPath } = await fetchInspectPayloadInBrowser({
+      url: body.url,
+      method: body.method || 'GET',
+      payload: body.payload,
+    });
+
+    console.log(`[inspect-fetch] method=${body.method || 'GET'} path=${requestPath} status=${fetchResult.status}`);
+    sendJson(res, 200, {
+      success: true,
+      data,
+      meta: {
+        browserUrl: target.url,
+        requestPath,
+        requestUrl: fetchResult.url,
+        status: fetchResult.status,
+      },
+    });
+  } catch (error) {
+    sendJson(res, 502, {
+      success: false,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function handleInspectRunSync(_req, res) {
+  try {
+    const result = await executeInspectSyncPipeline({ notify: true });
+    sendJson(res, result.success ? 200 : 502, result);
+  } catch (error) {
+    sendJson(res, 502, {
+      success: false,
+      mode: 'monthly',
+      fetchedCount: 0,
+      total: 0,
+      insertedCount: 0,
+      deletedCount: 0,
+      failedCount: 0,
+      notified: false,
+      totalFromApi: 0,
+      totalPages: 0,
+      durationMs: 0,
+      records: [],
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function handleDrillFeishuSync(req, res) {
   try {
     const body = await readRequestJson(req);
@@ -7453,6 +8116,7 @@ function getAutoSyncRunningLabel() {
   if (changeAutoSyncState.running) return '变更定时同步正在执行';
   if (drillAutoSyncState.running) return '演练定时同步正在执行';
   if (eventAutoSyncState.running) return '事件定时同步正在执行';
+  if (inspectAutoSyncState.running) return '巡检定时同步正在执行';
   return '';
 }
 
@@ -7462,6 +8126,7 @@ function getUpcomingAutoSyncLabel(now = Date.now()) {
     ['变更定时同步', changeAutoSyncState.nextRunAt],
     ['演练定时同步', drillAutoSyncState.nextRunAt],
     ['事件定时同步', eventAutoSyncState.nextRunAt],
+    ['巡检定时同步', inspectAutoSyncState.nextRunAt],
   ]
     .map(([label, value]) => {
       const runAt = value ? new Date(value).getTime() : Number.NaN;
@@ -7771,6 +8436,7 @@ const server = http.createServer(async (req, res) => {
       changeIntranetOrigin: CHANGE_INTRANET_ORIGIN,
       drillIntranetOrigin: DRILL_INTRANET_ORIGIN,
       eventIntranetOrigin: EVENT_INTRANET_ORIGIN,
+      inspectIntranetOrigin: INSPECT_INTRANET_ORIGIN,
       browserDebugPort: DEBUG_PORT,
       browserDebug: {
         port: DEBUG_PORT,
@@ -7856,6 +8522,20 @@ const server = http.createServer(async (req, res) => {
         lastInsertedCount: eventAutoSyncState.lastInsertedCount,
         nextRunAt: eventAutoSyncState.nextRunAt,
       },
+      inspectAutoSync: {
+        enabled: INSPECT_AUTO_SYNC_ENABLED,
+        hour: INSPECT_AUTO_SYNC_SCHEDULES[0]?.hour ?? 0,
+        minute: INSPECT_AUTO_SYNC_SCHEDULES[0]?.minute ?? 0,
+        scheduleTimes: inspectAutoSyncState.scheduleTimes,
+        running: inspectAutoSyncState.running,
+        queued: inspectAutoSyncState.queued,
+        statusMessage: inspectAutoSyncState.statusMessage,
+        lastAttemptAt: inspectAutoSyncState.lastAttemptAt,
+        lastSuccessAt: inspectAutoSyncState.lastSuccessAt,
+        lastError: inspectAutoSyncState.lastError,
+        lastInsertedCount: inspectAutoSyncState.lastInsertedCount,
+        nextRunAt: inspectAutoSyncState.nextRunAt,
+      },
       eventSyncProgress: cloneEventSyncProgress(),
       buildingOptions: {
         options: buildingOptionsState.options,
@@ -7899,6 +8579,16 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && req.url === '/api/event/browser-fetch') {
     await handleEventBrowserFetch(req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/inspect/browser-fetch') {
+    await handleInspectBrowserFetch(req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/inspect/sync/run') {
+    await handleInspectRunSync(req, res);
     return;
   }
 
@@ -8016,5 +8706,6 @@ server.listen(PORT, HOST, () => {
   scheduleNextChangeAutoSync();
   scheduleNextDrillAutoSync();
   scheduleNextEventAutoSync();
+  scheduleNextInspectAutoSync();
 });
 

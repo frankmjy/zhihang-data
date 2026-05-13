@@ -10,6 +10,7 @@ import type {
   FeishuConnectivityResponseDTO,
   GetExtractionsQuery,
   GetExtractionsResponse,
+  InspectSyncRunResp,
   RefreshRiskBuildingOptionsResponseDTO,
   ServiceHealthResponseDTO,
   SyncDrillRecordsResp,
@@ -42,6 +43,7 @@ export interface DrillBrowserFetchDTO {
 }
 
 export type EventBrowserFetchDTO = DrillBrowserFetchDTO;
+export type InspectBrowserFetchDTO = DrillBrowserFetchDTO;
 
 export interface RiskBrowserFetchDTO {
   path: string;
@@ -62,6 +64,7 @@ export interface DrillBrowserFetchResponse<T = unknown> {
 
 export type RiskBrowserFetchResponse<T = unknown> = DrillBrowserFetchResponse<T>;
 export type EventBrowserFetchResponse<T = unknown> = DrillBrowserFetchResponse<T>;
+export type InspectBrowserFetchResponse<T = unknown> = DrillBrowserFetchResponse<T>;
 
 export async function testConnection(dto: TestConnectionDTO): Promise<TestConnectionResponse> {
   try {
@@ -235,6 +238,38 @@ export async function browserFetchEvent<T = unknown>(
     const errorMessage = error.response?.data?.message || error.message || '事件数据拉取失败';
     logger.error(`事件数据拉取失败 - ${errorMessage}`);
     throw error;
+  }
+}
+
+export async function browserFetchInspect<T = unknown>(
+  dto: InspectBrowserFetchDTO,
+): Promise<InspectBrowserFetchResponse<T>> {
+  try {
+    const response = await axiosForBackend({
+      url: '/api/inspect/browser-fetch',
+      method: 'POST',
+      data: dto,
+    });
+    return response.data;
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.message || error.message || '巡检数据拉取失败';
+    logger.error(`巡检数据拉取失败 - ${errorMessage}`);
+    throw error;
+  }
+}
+
+export async function runInspectSync(): Promise<InspectSyncRunResp> {
+  try {
+    const response = await axiosForBackend({
+      url: '/api/inspect/sync/run',
+      method: 'POST',
+      timeout: EVENT_SYNC_TIMEOUT_MS,
+    });
+    return response.data;
+  } catch (error: any) {
+    const errorMessage = getApiErrorMessage(error, '巡检拉取同步失败');
+    logger.error(`巡检拉取同步失败 - ${errorMessage}`);
+    throw new Error(errorMessage);
   }
 }
 
