@@ -6121,18 +6121,39 @@ function isMissedUnsubmittedInspectRecord(record, now = new Date()) {
   return Boolean(getInspectMissedUnsubmittedDetail(record, now));
 }
 
-function isInspectPlanOverlappingDay(record, now = new Date()) {
+function hasInspectSubmitTime(record) {
+  return Boolean(String(record?.submitTime || '').trim());
+}
+
+function getInspectPlanStartDate(record) {
+  return parseInspectDate(record?.planStartDatetime);
+}
+
+function getInspectPlanEndDate(record) {
+  return parseInspectDate(record?.planEndDatetime) || getInspectPlanStartDate(record);
+}
+
+function getInspectDayBounds(date) {
+  const dayStart = new Date(date);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(date);
+  dayEnd.setHours(23, 59, 59, 999);
+  return { dayStart, dayEnd };
+}
+
+function isInspectPlanOverlappingDate(record, date) {
   const start = parseInspectDate(record?.planStartDatetime);
   const end = parseInspectDate(record?.planEndDatetime) || start;
   if (!start && !end) return false;
 
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(now);
-  dayEnd.setHours(23, 59, 59, 999);
+  const { dayStart, dayEnd } = getInspectDayBounds(date);
   const rangeStart = start || end;
   const rangeEnd = end || start;
   return rangeStart <= dayEnd && rangeEnd >= dayStart;
+}
+
+function isInspectPlanOverlappingDay(record, now = new Date()) {
+  return isInspectPlanOverlappingDate(record, now);
 }
 
 function getInspectBuildingLabel(record) {
@@ -6143,7 +6164,7 @@ function getInspectBuildingLabel(record) {
 
 function isCompletedInspectRecord(record) {
   const status = getInspectStatusText(record);
-  return Boolean(record?.submitTime) || status.includes('完成') || status.includes('已');
+  return hasInspectSubmitTime(record) || status.includes('完成') || status.includes('已');
 }
 
 function isPendingInspectRecord(record) {
@@ -6160,6 +6181,16 @@ function isOverdueInspectRecord(record) {
     || Boolean(String(record?.overdueReason || '').trim());
 }
 
+function isInspectRunningRecord(record) {
+  const status = getInspectStatusText(record);
+  const code = String(record?.jobExecuteStatus || '').toLowerCase();
+  return status.includes('巡检中')
+    || status.includes('进行中')
+    || code.includes('playing')
+    || code.includes('execut')
+    || code.includes('running');
+}
+
 function getInspectAbnormalCount(record, now = new Date()) {
   const hasAbnormalWorkOrder = isOverdueInspectRecord(record) || isMissedUnsubmittedInspectRecord(record, now);
   return getInspectStatValue(record, 'yc') + (hasAbnormalWorkOrder ? 1 : 0);
@@ -6170,20 +6201,55 @@ function getInspectAbnormalFlag(record, now = new Date()) {
 }
 
 function isTodayUnsubmittedInspectRecord(record, now = new Date()) {
-  return !String(record?.submitTime || '').trim() && isInspectPlanOverlappingDay(record, now);
+  return !hasInspectSubmitTime(record) && isInspectPlanOverlappingDay(record, now);
 }
 
-function formatInspectUnsubmittedSummary(records, limit = 20, options = {}) {
+function getInspectNoticePlanRange(record) {
+  const start = getInspectPlanStartDate(record);
+  const end = getInspectPlanEndDate(record);
+  const startText = start ? formatInspectNoticeDateTime(start) : String(record?.planStartDatetime || '').trim() || '--';
+  const endText = end ? formatInspectNoticeDateTime(end) : String(record?.planEndDatetime || '').trim();
+  return endText && endText !== startText ? `${startText}-${endText}` : startText;
+}
+
+function getInspectAbnormalReasonText(record, now = new Date()) {
+  const reasons = [];
+  const status = getInspectStatusText(record);
+  const abnormalPoints = getInspectStatValue(record, 'yc');
+  const overdueReason = String(record?.overdueReason || '').trim();
+
+  if (abnormalPoints > 0) {
+    reasons.push(`异常点 ${abnormalPoints}`);
+  }
+  if (isOverdueInspectRecord(record)) {
+    reasons.push(hasInspectSubmitTime(record) ? '逾期完成' : '逾期未提交');
+  }
+  if (isMissedUnsubmittedInspectRecord(record, now)) {
+    reasons.push('逾班未提交');
+  }
+  if (overdueReason) {
+    reasons.push(overdueReason);
+  }
+
+  return Array.from(new Set(reasons)).join('，') || status || '异常';
+}
+
+function formatInspectRecordSummaryLine(record, index, options = {}) {
+  const building = getInspectBuildingLabel(record);
+  const user = String(record?.userName || '').trim() || '未分配';
+  const status = getInspectStatusText(record) || '无状态';
+  const planRange = getInspectNoticePlanRange(record);
+  const reason = options.includeReason ? getInspectAbnormalReasonText(record, options.now || new Date()) : '';
+  const suffix = reason ? `｜${reason}` : '';
+  return `${index + 1}. ${building}｜${user}｜${planRange}｜${status}${suffix}`;
+}
+
+function formatInspectRecordListSummary(records, limit = 20, options = {}) {
   const items = Array.isArray(records) ? records : [];
   const maxItems = Math.max(1, Number(limit) || 20);
-  const lines = items.slice(0, maxItems).map((record, index) => {
-    const building = getInspectBuildingLabel(record);
-    const user = String(record?.userName || '').trim() || '未分配';
-    const planStart = String(record?.planStartDatetime || '').trim() || '--';
-    const missedDetail = options.includeMissedDue ? getInspectMissedUnsubmittedDetail(record, options.now || new Date()) : null;
-    const dueText = missedDetail ? `｜已过下一班 ${missedDetail.dueText}` : '';
-    return `${index + 1}. ${building}｜${user}｜${planStart}${dueText}`;
-  });
+  const lines = items
+    .slice(0, maxItems)
+    .map((record, index) => formatInspectRecordSummaryLine(record, index, options));
   if (items.length > maxItems) {
     lines.push(`另有 ${items.length - maxItems} 单未展开`);
   }
@@ -6191,15 +6257,97 @@ function formatInspectUnsubmittedSummary(records, limit = 20, options = {}) {
   return lines.join('\n');
 }
 
-function formatInspectTodayUnsubmittedSummary(records, limit = 20) {
-  return formatInspectUnsubmittedSummary(records, limit);
+const INSPECT_TODAY_UNSUBMITTED_GROUPS = [
+  { key: 'endedUnsubmitted', title: '已到巡检结束还未提交（重点）' },
+  { key: 'pastStartNotStarted', title: '已过巡检开始还未开始' },
+  { key: 'inspecting', title: '巡检中' },
+  { key: 'notStarted', title: '未开始' },
+  { key: 'other', title: '其他未提交' },
+];
+
+const INSPECT_TODAY_UNSUBMITTED_COUNT_ORDER = [
+  { key: 'inspecting', title: '巡检中' },
+  { key: 'notStarted', title: '未开始' },
+  { key: 'pastStartNotStarted', title: '已过开始未开始' },
+  { key: 'endedUnsubmitted', title: '已到结束未提交' },
+  { key: 'other', title: '其他' },
+];
+
+function classifyInspectTodayUnsubmittedRecord(record, now = new Date()) {
+  if (!isTodayUnsubmittedInspectRecord(record, now)) {
+    return '';
+  }
+
+  const start = getInspectPlanStartDate(record);
+  const end = getInspectPlanEndDate(record);
+  if (end && now >= end) {
+    return 'endedUnsubmitted';
+  }
+  if (isInspectRunningRecord(record)) {
+    return 'inspecting';
+  }
+  if (start && now < start) {
+    return 'notStarted';
+  }
+  if (start && now >= start) {
+    return 'pastStartNotStarted';
+  }
+  return 'other';
+}
+
+function groupInspectTodayUnsubmittedRecords(records, now = new Date()) {
+  const groups = Object.fromEntries(INSPECT_TODAY_UNSUBMITTED_GROUPS.map((group) => [group.key, []]));
+  (Array.isArray(records) ? records : []).forEach((record) => {
+    const groupKey = classifyInspectTodayUnsubmittedRecord(record, now);
+    if (!groupKey) return;
+    groups[groupKey].push(record);
+  });
+
+  Object.values(groups).forEach((items) => {
+    items.sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
+  });
+  return groups;
+}
+
+function countInspectTodayUnsubmittedGroups(groups) {
+  return Object.values(groups || {}).reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0);
+}
+
+function formatInspectTodayGroupCountSummary(groups) {
+  return INSPECT_TODAY_UNSUBMITTED_COUNT_ORDER
+    .map((group) => {
+      const count = Array.isArray(groups?.[group.key]) ? groups[group.key].length : 0;
+      return `${group.title} ${count}`;
+    })
+    .join('、');
+}
+
+function formatInspectTodayUnsubmittedGroupedSummary(groups, limitPerGroup = 12) {
+  return INSPECT_TODAY_UNSUBMITTED_GROUPS
+    .map((group) => {
+      const items = Array.isArray(groups?.[group.key]) ? groups[group.key] : [];
+      if (items.length === 0) return '';
+      return `【${group.title}】${items.length} 单\n${formatInspectRecordListSummary(items, limitPerGroup)}`;
+    })
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function formatInspectMissedUnsubmittedSummary(records, now = new Date(), limit = 20) {
-  return formatInspectUnsubmittedSummary(records, limit, {
-    includeMissedDue: true,
-    now,
-  });
+  return formatInspectRecordListSummary(records, limit, { includeReason: true, now });
+}
+
+function getYesterdayInspectAbnormalRecords(records, now = new Date()) {
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  return (Array.isArray(records) ? records : [])
+    .filter((record) => isInspectPlanOverlappingDate(record, yesterday))
+    .filter((record) => getInspectAbnormalCount(record, now) > 0)
+    .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
+}
+
+function formatInspectYesterdayAbnormalSummary(records, now = new Date(), limit = 20) {
+  return formatInspectRecordListSummary(records, limit, { includeReason: true, now });
 }
 
 function createEmptyInspectFeishuFields() {
@@ -6278,10 +6426,18 @@ function buildInspectSyncSummary(records, options = {}) {
   const todayUnsubmittedRecords = items
     .filter((record) => isTodayUnsubmittedInspectRecord(record, now))
     .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
+  const todayUnsubmittedGroups = groupInspectTodayUnsubmittedRecords(todayUnsubmittedRecords, now);
+  const todayUnsubmittedCount = countInspectTodayUnsubmittedGroups(todayUnsubmittedGroups);
+  const todayUnsubmittedGroupSummary = todayUnsubmittedCount > 0
+    ? formatInspectTodayGroupCountSummary(todayUnsubmittedGroups)
+    : '';
+  const todayEndedUnsubmittedCount = todayUnsubmittedGroups.endedUnsubmitted.length;
+  const todayUnsubmittedSummary = formatInspectTodayUnsubmittedGroupedSummary(todayUnsubmittedGroups);
+  const yesterdayAbnormalRecords = getYesterdayInspectAbnormalRecords(items, now);
+  const yesterdayAbnormalSummary = formatInspectYesterdayAbnormalSummary(yesterdayAbnormalRecords, now);
   const missedUnsubmittedRecords = items
     .filter((record) => isMissedUnsubmittedInspectRecord(record, now))
     .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
-  const todayUnsubmittedSummary = formatInspectTodayUnsubmittedSummary(todayUnsubmittedRecords);
   const missedUnsubmittedSummary = formatInspectMissedUnsubmittedSummary(missedUnsubmittedRecords, now);
   const statusSummary = formatCounterSummary(statusCounter, 0);
   const buildingSummary = formatInspectBuildingSummary(buildingStatsMap);
@@ -6289,8 +6445,10 @@ function buildInspectSyncSummary(records, options = {}) {
   const rangeText = `${options.rangeStart || ''} - ${options.rangeEnd || ''}`.trim();
   const linkUrl = getInspectBitableWebUrl();
   const tips = [
+    yesterdayAbnormalRecords.length > 0 ? `昨日异常项 ${yesterdayAbnormalRecords.length} 单，请复盘闭环` : '',
+    todayEndedUnsubmittedCount > 0 ? `今日已到巡检结束还未提交 ${todayEndedUnsubmittedCount} 单，请立即跟进` : '',
     missedUnsubmittedRecords.length > 0 ? `逾班未提交 ${missedUnsubmittedRecords.length} 单，已计入异常项，请优先处理` : '',
-    todayUnsubmittedRecords.length > 0 ? `今日未提交 ${todayUnsubmittedRecords.length} 单，请优先跟进` : '',
+    todayUnsubmittedCount > 0 ? `今日未提交 ${todayUnsubmittedCount} 单：${todayUnsubmittedGroupSummary}` : '',
     pendingCount > 0 ? `本月待巡检 ${pendingCount} 单，请关注计划执行` : '',
     abnormalTotal > 0 ? `本月异常点 ${abnormalTotal} 个（含逾期/逾班未提交工单），请关注巡检结果` : '',
   ].filter(Boolean).join('\n');
@@ -6301,18 +6459,20 @@ function buildInspectSyncSummary(records, options = {}) {
   ].filter(Boolean).join('；');
 
   return {
-    hasImportant: abnormalTotal > 0,
+    hasImportant: abnormalTotal > 0 || yesterdayAbnormalRecords.length > 0 || todayEndedUnsubmittedCount > 0,
     abnormalTotal,
     missedUnsubmittedCount: missedUnsubmittedRecords.length,
     notifyMessage: buildSyncCardMessage({
       title: '巡检拉取同步',
-      template: (abnormalTotal + missedUnsubmittedRecords.length) > 0 ? 'red' : ((todayUnsubmittedRecords.length + pendingCount) > 0 ? 'yellow' : 'green'),
+      template: (abnormalTotal + missedUnsubmittedRecords.length + yesterdayAbnormalRecords.length + todayEndedUnsubmittedCount) > 0 ? 'red' : ((todayUnsubmittedCount + pendingCount) > 0 ? 'yellow' : 'green'),
       fallbackLines: [
         '【巡检拉取同步】',
         `同步时间：${syncTime}`,
         rangeText ? `本月范围：${rangeText}` : '',
         `覆盖工单：${items.length} 条`,
         distributionLine ? `分布概览：${distributionLine}` : '',
+        todayUnsubmittedGroupSummary ? `今日未提交分组：${todayUnsubmittedGroupSummary}` : '',
+        yesterdayAbnormalSummary ? `昨日异常项：\n${yesterdayAbnormalSummary}` : '',
         missedUnsubmittedSummary ? `异常未提交：\n${missedUnsubmittedSummary}` : '',
         todayUnsubmittedSummary ? `今日未提交：\n${todayUnsubmittedSummary}` : '',
         tips ? `提示：\n${tips}` : '',
@@ -6324,19 +6484,21 @@ function buildInspectSyncSummary(records, options = {}) {
         rangeText ? `**本月范围**：${escapeFeishuCardMarkdown(rangeText)}` : '',
         `**覆盖工单**：${items.length} 条`,
         distributionLine ? `**分布概览**：${escapeFeishuCardMarkdown(distributionLine)}` : '',
+        yesterdayAbnormalRecords.length > 0 ? `**昨日异常项**：${yesterdayAbnormalRecords.length} 单` : '',
         missedUnsubmittedRecords.length > 0 ? `**异常未提交**：${missedUnsubmittedRecords.length} 单` : '',
-        todayUnsubmittedRecords.length > 0 ? `**今日未提交**：${todayUnsubmittedRecords.length} 单` : '',
+        todayUnsubmittedCount > 0 ? `**今日未提交**：${todayUnsubmittedCount} 单（${escapeFeishuCardMarkdown(todayUnsubmittedGroupSummary)}）` : '',
         `**多维表**：[打开](${linkUrl})`,
       ],
       sections: [
-        { title: '异常未提交', content: escapeFeishuCardMarkdown(missedUnsubmittedSummary) },
-        { title: '今日未提交', content: escapeFeishuCardMarkdown(todayUnsubmittedSummary) },
+        { title: '昨日异常项（重点）', content: escapeFeishuCardMarkdown(yesterdayAbnormalSummary) },
+        { title: '今日未提交分组', content: escapeFeishuCardMarkdown(todayUnsubmittedSummary) },
+        { title: '逾班未提交', content: escapeFeishuCardMarkdown(missedUnsubmittedSummary) },
         { title: '提示', content: escapeFeishuCardMarkdown(tips) },
         { title: '楼栋进展', content: escapeFeishuCardMarkdown(buildingSummary) },
       ],
     }),
     successMessage: ({ insertedCount, deletedCount }) => (
-      `巡检本月同步完成：删除旧记录 ${deletedCount} 条，覆盖写入 ${insertedCount} 条，本月完成 ${completedCount} 条，待巡检 ${pendingCount} 条，今日未提交 ${todayUnsubmittedRecords.length} 条，逾班未提交 ${missedUnsubmittedRecords.length} 条，异常点 ${abnormalTotal}（含逾期/逾班未提交）`
+      `巡检本月同步完成：删除旧记录 ${deletedCount} 条，覆盖写入 ${insertedCount} 条，本月完成 ${completedCount} 条，待巡检 ${pendingCount} 条，今日未提交 ${todayUnsubmittedCount} 条（${todayUnsubmittedGroupSummary || '无'}），昨日异常 ${yesterdayAbnormalRecords.length} 条，逾班未提交 ${missedUnsubmittedRecords.length} 条，异常点 ${abnormalTotal}（含逾期/逾班未提交）`
     ),
   };
 }
