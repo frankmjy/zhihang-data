@@ -5839,6 +5839,7 @@ const INSPECT_FEISHU_FIELD_NAMES = [
   '巡检结果',
   '工单状态',
   '逾期原因',
+  '异常标',
 ];
 
 function formatInspectDateTime(date, endOfDay = false) {
@@ -6134,6 +6135,12 @@ function isInspectPlanOverlappingDay(record, now = new Date()) {
   return rangeStart <= dayEnd && rangeEnd >= dayStart;
 }
 
+function getInspectBuildingLabel(record) {
+  return normalizeRiskBuildingLabel(record?.buildingName)
+    || String(record?.buildingName || '').trim()
+    || '未识别楼栋';
+}
+
 function isCompletedInspectRecord(record) {
   const status = getInspectStatusText(record);
   return Boolean(record?.submitTime) || status.includes('完成') || status.includes('已');
@@ -6158,6 +6165,10 @@ function getInspectAbnormalCount(record, now = new Date()) {
   return getInspectStatValue(record, 'yc') + (hasAbnormalWorkOrder ? 1 : 0);
 }
 
+function getInspectAbnormalFlag(record, now = new Date()) {
+  return getInspectAbnormalCount(record, now) > 0 ? '异常' : '';
+}
+
 function isTodayUnsubmittedInspectRecord(record, now = new Date()) {
   return !String(record?.submitTime || '').trim() && isInspectPlanOverlappingDay(record, now);
 }
@@ -6166,7 +6177,7 @@ function formatInspectUnsubmittedSummary(records, limit = 20, options = {}) {
   const items = Array.isArray(records) ? records : [];
   const maxItems = Math.max(1, Number(limit) || 20);
   const lines = items.slice(0, maxItems).map((record, index) => {
-    const building = String(record?.buildingName || '').trim() || '未识别楼栋';
+    const building = getInspectBuildingLabel(record);
     const user = String(record?.userName || '').trim() || '未分配';
     const planStart = String(record?.planStartDatetime || '').trim() || '--';
     const missedDetail = options.includeMissedDue ? getInspectMissedUnsubmittedDetail(record, options.now || new Date()) : null;
@@ -6195,13 +6206,13 @@ function createEmptyInspectFeishuFields() {
   return Object.fromEntries(INSPECT_FEISHU_FIELD_NAMES.map((fieldName) => [fieldName, '']));
 }
 
-function mapInspectJobToFeishuFields(record, index = 0) {
+function mapInspectJobToFeishuFields(record, index = 0, now = new Date()) {
   const item = record || {};
-  return {
+  const fields = {
     序号: String(index + 1),
     工单名称: String(item.planName || ''),
     数据中心: String(item.datacenterName || ''),
-    楼栋: String(item.buildingName || ''),
+    楼栋: getInspectBuildingLabel(item),
     位置信息: String(item.locations || ''),
     巡检人: String(item.userName || ''),
     巡检类型: getInspectCycleText(item.executeCycle),
@@ -6212,6 +6223,11 @@ function mapInspectJobToFeishuFields(record, index = 0) {
     工单状态: getInspectStatusText(item),
     逾期原因: String(item.overdueReason || ''),
   };
+  const abnormalFlag = getInspectAbnormalFlag(item, now);
+  if (abnormalFlag) {
+    fields.异常标 = abnormalFlag;
+  }
+  return fields;
 }
 
 function formatInspectBuildingSummary(statsMap) {
@@ -6225,7 +6241,7 @@ function formatInspectBuildingSummary(statsMap) {
 
 function buildInspectSyncSummary(records, options = {}) {
   const items = Array.isArray(records) ? records : [];
-  const now = new Date();
+  const now = options.now instanceof Date ? options.now : new Date();
   const statusCounter = new Map();
   const buildingStatsMap = new Map(RISK_BUILDING_SUMMARY_ORDER.map((label) => [label, {
     total: 0,
@@ -6238,7 +6254,7 @@ function buildInspectSyncSummary(records, options = {}) {
   let abnormalTotal = 0;
   items.forEach((record) => {
     const statusText = getInspectStatusText(record) || '未知状态';
-    const buildingLabel = normalizeRiskBuildingLabel(record?.buildingName) || String(record?.buildingName || '').trim() || '未识别楼栋';
+    const buildingLabel = getInspectBuildingLabel(record);
     const stats = buildingStatsMap.get(buildingLabel) || {
       total: 0,
       completed: 0,
@@ -6329,9 +6345,11 @@ async function executeInspectSyncPipeline(options = {}) {
   const startedAt = Date.now();
   const fetchResult = await fetchInspectJobsForCurrentMonth();
   const inspectFeishuClient = createInspectFeishuClient();
+  const syncNow = new Date();
   const summary = buildInspectSyncSummary(fetchResult.records, {
     rangeStart: fetchResult.rangeStart,
     rangeEnd: fetchResult.rangeEnd,
+    now: syncNow,
   });
 
   let syncResult;
@@ -6358,7 +6376,7 @@ async function executeInspectSyncPipeline(options = {}) {
     };
   } else {
     syncResult = await inspectFeishuClient.replaceTableRecords(
-      fetchResult.records.map((record, index) => ({ fields: mapInspectJobToFeishuFields(record, index) })),
+      fetchResult.records.map((record, index) => ({ fields: mapInspectJobToFeishuFields(record, index, syncNow) })),
       {
         notify: options.notify,
         notifyMessage: summary.notifyMessage,
