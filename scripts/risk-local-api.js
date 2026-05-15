@@ -6294,16 +6294,21 @@ function getInspectLateSubmittedAfterNextShiftDetail(record) {
   };
 }
 
-function getInspectYesterdayAbnormalReasonText(record) {
+function getInspectYesterdayAbnormalReasonText(record, now = new Date()) {
   if (!hasInspectSubmitTime(record)) {
     const planStartDate = getInspectPlanStartDate(record);
     const dueDate = planStartDate ? getInspectNextShiftDueDate(planStartDate) : null;
     return dueDate ? `未提交，已过下一班 ${formatInspectNoticeDateTime(dueDate)}` : '未提交';
   }
 
+  const abnormalReason = getInspectAbnormalCount(record, now) > 0 ? getInspectAbnormalReasonText(record, now) : '';
   const lateDetail = getInspectLateSubmittedAfterNextShiftDetail(record);
-  if (lateDetail) {
-    return `提交晚于下一班 ${lateDetail.dueText}，提交 ${lateDetail.submitText}`;
+  const lateReason = lateDetail ? `提交晚于下一班 ${lateDetail.dueText}，提交 ${lateDetail.submitText}` : '';
+  if (abnormalReason && lateReason) {
+    return `${abnormalReason}，${lateReason}`;
+  }
+  if (abnormalReason || lateReason) {
+    return abnormalReason || lateReason;
   }
 
   return getInspectAbnormalReasonText(record);
@@ -6423,7 +6428,9 @@ function isYesterdayInspectAbnormalRecord(record, now = new Date()) {
     return false;
   }
 
-  return !hasInspectSubmitTime(record) || Boolean(getInspectLateSubmittedAfterNextShiftDetail(record));
+  return !hasInspectSubmitTime(record)
+    || getInspectAbnormalCount(record, now) > 0
+    || Boolean(getInspectLateSubmittedAfterNextShiftDetail(record));
 }
 
 function getYesterdayInspectAbnormalRecords(records, now = new Date()) {
