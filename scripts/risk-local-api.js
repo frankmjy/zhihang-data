@@ -36,6 +36,7 @@ const DEFAULT_INSPECT_FEISHU_TABLE_ID = 'tblTXHrDH4Mv0971';
 const DEFAULT_INSPECT_FEISHU_VIEW_ID = 'vewgfEzEZl';
 const DEFAULT_RISK_PATH = '/api/ab-bpm/biz/bizCustGrid/view/list_fxgl_xcydfxpcmxsjlb';
 const DEFAULT_RECORD_LIST_PATH = '/api/ab-bpm/biz/bizCustGrid/view/fxgl_xcydfxpcjlsjlb';
+const DEFAULT_FEISHU_NOTIFY_CHAT_ID = 'oc_3bc648b9b761f24a65366a9b04b32eb2';
 
 loadDotEnv();
 
@@ -85,7 +86,7 @@ const LEGACY_RISK_AUTO_SYNC_MINUTE = normalizeClockPart(process.env.RISK_AUTO_SY
 const DEFAULT_AUTO_SYNC_MESSAGE_TIME_LABELS = ['08:33'];
 const DEFAULT_RISK_AUTO_SYNC_TIME_LABELS = ['08:33'];
 const DEFAULT_CHANGE_AUTO_SYNC_TIME_LABELS = ['08:35', '13:05', '16:05'];
-const DEFAULT_CHANGE_DAILY_NOTIFY_CHAT_ID = '';
+const DEFAULT_CHANGE_DAILY_NOTIFY_CHAT_ID = DEFAULT_FEISHU_NOTIFY_CHAT_ID;
 const AUTO_SYNC_MESSAGE_ENABLED = parseBoolean(process.env.AUTO_SYNC_MESSAGE_ENABLED, true);
 const AUTO_SYNC_MESSAGE_WEEKDAY = normalizePositiveInteger(process.env.AUTO_SYNC_MESSAGE_WEEKDAY, 4, 0, 6);
 const AUTO_SYNC_MESSAGE_MONTH_END_AFTER_DAY = normalizePositiveInteger(process.env.AUTO_SYNC_MESSAGE_MONTH_END_AFTER_DAY, 25, 1, 30);
@@ -106,17 +107,20 @@ const CHANGE_AUTO_SYNC_SCHEDULES = parseDailyScheduleList(
 );
 const CHANGE_AUTO_SYNC_NOTIFY_ENABLED = parseBoolean(process.env.CHANGE_AUTO_SYNC_NOTIFY_ENABLED, true);
 const CHANGE_IMPORTANT_NOTIFY_ENABLED = parseBoolean(process.env.CHANGE_IMPORTANT_NOTIFY_ENABLED, true);
-const CHANGE_IMPORTANT_NOTIFY_CHAT_ID = String(process.env.CHANGE_IMPORTANT_NOTIFY_CHAT_ID || process.env.CHANGE_DAILY_NOTIFY_CHAT_ID || DEFAULT_CHANGE_DAILY_NOTIFY_CHAT_ID).trim();
+const CHANGE_IMPORTANT_NOTIFY_CHAT_ID = resolveFeishuNotifyChatId(
+  process.env.CHANGE_IMPORTANT_NOTIFY_CHAT_ID,
+  process.env.CHANGE_DAILY_NOTIFY_CHAT_ID,
+  DEFAULT_CHANGE_DAILY_NOTIFY_CHAT_ID,
+);
 const CHANGE_IMPORTANT_NOTIFY_SCHEDULES = parseDailyScheduleList(
   process.env.CHANGE_IMPORTANT_NOTIFY_SCHEDULES,
   ['16:05'],
 );
 const EXTRA_ABNORMAL_NOTIFY_ENABLED = parseBoolean(process.env.EXTRA_ABNORMAL_NOTIFY_ENABLED, true);
-const EXTRA_ABNORMAL_NOTIFY_CHAT_ID = String(
-  process.env.EXTRA_ABNORMAL_NOTIFY_CHAT_ID
-    || process.env.FEISHU_ABNORMAL_NOTIFY_CHAT_ID
-    || 'oc_38825452b566a9c8d5859d54eb31a64c',
-).trim();
+const EXTRA_ABNORMAL_NOTIFY_CHAT_ID = resolveFeishuNotifyChatId(
+  process.env.EXTRA_ABNORMAL_NOTIFY_CHAT_ID,
+  process.env.FEISHU_ABNORMAL_NOTIFY_CHAT_ID,
+);
 const DEFAULT_DRILL_AUTO_SYNC_TIME_LABELS = ['08:33'];
 const DEFAULT_EVENT_AUTO_SYNC_TIME_LABELS = ['08:37', '13:38', '16:08'];
 const DEFAULT_INSPECT_AUTO_SYNC_TIME_LABELS = ['07:00', '11:00', '17:00', '23:30'];
@@ -201,7 +205,9 @@ const SYNC_LIGHTWEIGHT_CACHE_DIRS = parseRuntimePathList(
   [path.join('.run', 'sync-cache'), path.join('.run', 'temp'), path.join('.run', 'tmp')],
 );
 const AUTO_SYNC_STARTUP_CATCHUP_MS = normalizePositiveInteger(process.env.AUTO_SYNC_STARTUP_CATCHUP_MS, 30 * 60 * 1000, 0, 3 * 60 * 60 * 1000);
-const feishuClient = new FeishuOpenApiClient();
+const feishuClient = new FeishuOpenApiClient({
+  notifyChatId: resolveFeishuNotifyChatId(),
+});
 const keepAliveState = {
   running: false,
   timer: null,
@@ -513,6 +519,16 @@ function getRiskRecordListPathCandidates() {
   return candidates;
 }
 
+function resolveFeishuNotifyChatId(...candidates) {
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (value) {
+      return value;
+    }
+  }
+  return String(process.env.FEISHU_NOTIFY_CHAT_ID || DEFAULT_FEISHU_NOTIFY_CHAT_ID).trim();
+}
+
 function createChangeFeishuClient(table, overrides = {}) {
   const tableId = table === 'workOrders'
     ? process.env.CHANGE_FEISHU_WORKORDER_TABLE_ID || process.env.CHANGE_FEISHU_BASIC_DATA_TABLE_ID || DEFAULT_CHANGE_FEISHU_TABLE_ID
@@ -525,7 +541,7 @@ function createChangeFeishuClient(table, overrides = {}) {
     appToken: process.env.CHANGE_FEISHU_BITABLE_APP_TOKEN || DEFAULT_CHANGE_FEISHU_APP_TOKEN,
     tableId,
     viewId: process.env.CHANGE_FEISHU_BASIC_DATA_VIEW_ID || DEFAULT_CHANGE_FEISHU_VIEW_ID,
-    notifyChatId: overrides.notifyChatId ?? (process.env.CHANGE_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || ''),
+    notifyChatId: overrides.notifyChatId ?? resolveFeishuNotifyChatId(process.env.CHANGE_FEISHU_NOTIFY_CHAT_ID),
     notifyChatName: overrides.notifyChatName ?? (process.env.CHANGE_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || ''),
   });
 }
@@ -538,7 +554,7 @@ function createDrillFeishuClient() {
     appToken: process.env.DRILL_FEISHU_BITABLE_APP_TOKEN || DEFAULT_DRILL_FEISHU_APP_TOKEN,
     tableId: process.env.DRILL_FEISHU_TABLE_ID || DEFAULT_DRILL_FEISHU_TABLE_ID,
     viewId: process.env.DRILL_FEISHU_VIEW_ID || DEFAULT_DRILL_FEISHU_VIEW_ID,
-    notifyChatId: process.env.DRILL_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+    notifyChatId: resolveFeishuNotifyChatId(process.env.DRILL_FEISHU_NOTIFY_CHAT_ID),
     notifyChatName: process.env.DRILL_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || '',
   });
 }
@@ -551,7 +567,7 @@ function createEventFeishuClient(overrides = {}) {
     appToken: process.env.EVENT_FEISHU_BITABLE_APP_TOKEN || DEFAULT_EVENT_FEISHU_APP_TOKEN,
     tableId: process.env.EVENT_FEISHU_TABLE_ID || DEFAULT_EVENT_FEISHU_TABLE_ID,
     viewId: process.env.EVENT_FEISHU_VIEW_ID || DEFAULT_EVENT_FEISHU_VIEW_ID,
-    notifyChatId: overrides.notifyChatId ?? (process.env.EVENT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || ''),
+    notifyChatId: overrides.notifyChatId ?? resolveFeishuNotifyChatId(process.env.EVENT_FEISHU_NOTIFY_CHAT_ID),
     notifyChatName: overrides.notifyChatName ?? (process.env.EVENT_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || ''),
   });
 }
@@ -564,7 +580,7 @@ function createInspectFeishuClient(overrides = {}) {
     appToken: process.env.INSPECT_FEISHU_BITABLE_APP_TOKEN || DEFAULT_INSPECT_FEISHU_APP_TOKEN,
     tableId: process.env.INSPECT_FEISHU_TABLE_ID || DEFAULT_INSPECT_FEISHU_TABLE_ID,
     viewId: process.env.INSPECT_FEISHU_VIEW_ID || DEFAULT_INSPECT_FEISHU_VIEW_ID,
-    notifyChatId: overrides.notifyChatId ?? (process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || ''),
+    notifyChatId: overrides.notifyChatId ?? resolveFeishuNotifyChatId(process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID),
     notifyChatName: overrides.notifyChatName ?? (process.env.INSPECT_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || ''),
   });
 }
@@ -2688,7 +2704,7 @@ async function handleFeishuConnectivity(req, res) {
       checkedAt: new Date().toISOString(),
       tenantName: '',
       appName: '',
-      chatId: process.env.FEISHU_NOTIFY_CHAT_ID || '',
+      chatId: resolveFeishuNotifyChatId(),
       chatName: '',
       tableId: process.env.FEISHU_BITABLE_TABLE_ID || '',
       tableRecordCount: 0,
@@ -5493,7 +5509,7 @@ async function sendChangeImportantNotifyMessage(summary, runContext) {
     };
   }
 
-  const primaryChatId = String(process.env.CHANGE_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '').trim();
+  const primaryChatId = resolveFeishuNotifyChatId(process.env.CHANGE_FEISHU_NOTIFY_CHAT_ID);
   if (primaryChatId && primaryChatId === CHANGE_IMPORTANT_NOTIFY_CHAT_ID) {
     return {
       attempted: false,
@@ -5570,7 +5586,7 @@ async function runChangeAutoSyncOnce(runContext = {}) {
       moduleName: '变更异常',
       summary,
       createClient: (overrides) => createChangeFeishuClient('basicData', overrides),
-      primaryChatId: process.env.CHANGE_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+      primaryChatId: resolveFeishuNotifyChatId(process.env.CHANGE_FEISHU_NOTIFY_CHAT_ID),
       enabled: shouldNotify,
     });
 
@@ -6133,6 +6149,10 @@ function getInspectPlanEndDate(record) {
   return parseInspectDate(record?.planEndDatetime) || getInspectPlanStartDate(record);
 }
 
+function getInspectSubmitDate(record) {
+  return parseInspectDate(record?.submitTime);
+}
+
 function getInspectDayBounds(date) {
   const dayStart = new Date(date);
   dayStart.setHours(0, 0, 0, 0);
@@ -6234,12 +6254,53 @@ function getInspectAbnormalReasonText(record, now = new Date()) {
   return Array.from(new Set(reasons)).join('，') || status || '异常';
 }
 
+function getInspectLateSubmittedAfterNextShiftDetail(record) {
+  const planStartDate = getInspectPlanStartDate(record);
+  const submitDate = getInspectSubmitDate(record);
+  if (!planStartDate || !submitDate) {
+    return null;
+  }
+
+  const dueDate = getInspectNextShiftDueDate(planStartDate);
+  if (!dueDate || submitDate <= dueDate) {
+    return null;
+  }
+
+  return {
+    record,
+    dueDate,
+    submitDate,
+    planStartDate,
+    dueText: formatInspectNoticeDateTime(dueDate),
+    submitText: formatInspectNoticeDateTime(submitDate),
+  };
+}
+
+function getInspectYesterdayAbnormalReasonText(record) {
+  if (!hasInspectSubmitTime(record)) {
+    const planStartDate = getInspectPlanStartDate(record);
+    const dueDate = planStartDate ? getInspectNextShiftDueDate(planStartDate) : null;
+    return dueDate ? `未提交，已过下一班 ${formatInspectNoticeDateTime(dueDate)}` : '未提交';
+  }
+
+  const lateDetail = getInspectLateSubmittedAfterNextShiftDetail(record);
+  if (lateDetail) {
+    return `提交晚于下一班 ${lateDetail.dueText}，提交 ${lateDetail.submitText}`;
+  }
+
+  return getInspectAbnormalReasonText(record);
+}
+
 function formatInspectRecordSummaryLine(record, index, options = {}) {
   const building = getInspectBuildingLabel(record);
   const user = String(record?.userName || '').trim() || '未分配';
   const status = getInspectStatusText(record) || '无状态';
   const planRange = getInspectNoticePlanRange(record);
-  const reason = options.includeReason ? getInspectAbnormalReasonText(record, options.now || new Date()) : '';
+  const reason = options.includeReason
+    ? (typeof options.reasonGetter === 'function'
+      ? options.reasonGetter(record, options.now || new Date())
+      : getInspectAbnormalReasonText(record, options.now || new Date()))
+    : '';
   const suffix = reason ? `｜${reason}` : '';
   return `${index + 1}. ${building}｜${user}｜${planRange}｜${status}${suffix}`;
 }
@@ -6337,17 +6398,28 @@ function formatInspectMissedUnsubmittedSummary(records, now = new Date(), limit 
   return formatInspectRecordListSummary(records, limit, { includeReason: true, now });
 }
 
-function getYesterdayInspectAbnormalRecords(records, now = new Date()) {
+function isYesterdayInspectAbnormalRecord(record, now = new Date()) {
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
+  if (!isInspectPlanOverlappingDate(record, yesterday)) {
+    return false;
+  }
+
+  return !hasInspectSubmitTime(record) || Boolean(getInspectLateSubmittedAfterNextShiftDetail(record));
+}
+
+function getYesterdayInspectAbnormalRecords(records, now = new Date()) {
   return (Array.isArray(records) ? records : [])
-    .filter((record) => isInspectPlanOverlappingDate(record, yesterday))
-    .filter((record) => getInspectAbnormalCount(record, now) > 0)
+    .filter((record) => isYesterdayInspectAbnormalRecord(record, now))
     .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
 }
 
 function formatInspectYesterdayAbnormalSummary(records, now = new Date(), limit = 20) {
-  return formatInspectRecordListSummary(records, limit, { includeReason: true, now });
+  return formatInspectRecordListSummary(records, limit, {
+    includeReason: true,
+    now,
+    reasonGetter: getInspectYesterdayAbnormalReasonText,
+  });
 }
 
 function createEmptyInspectFeishuFields() {
@@ -6551,7 +6623,7 @@ async function executeInspectSyncPipeline(options = {}) {
     moduleName: '巡检异常',
     summary,
     createClient: createInspectFeishuClient,
-    primaryChatId: process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+    primaryChatId: resolveFeishuNotifyChatId(process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID),
     enabled: options.notify !== false,
   });
   if (extraAbnormalNotifyResult.message) {
@@ -7804,7 +7876,7 @@ async function executeEventFullSync(options = {}) {
     moduleName: '事件异常',
     summary,
     createClient: createEventFeishuClient,
-    primaryChatId: process.env.EVENT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+    primaryChatId: resolveFeishuNotifyChatId(process.env.EVENT_FEISHU_NOTIFY_CHAT_ID),
     enabled: options.notify !== false,
   });
   if (extraAbnormalNotifyResult.message) {
@@ -7980,7 +8052,7 @@ async function executeEventIncrementalSync(options = {}) {
       moduleName: '事件异常',
       summary,
       createClient: createEventFeishuClient,
-      primaryChatId: process.env.EVENT_FEISHU_NOTIFY_CHAT_ID || process.env.FEISHU_NOTIFY_CHAT_ID || '',
+      primaryChatId: resolveFeishuNotifyChatId(process.env.EVENT_FEISHU_NOTIFY_CHAT_ID),
       enabled: options.notify !== false,
     });
     if (extraAbnormalNotifyResult.message) {
