@@ -37,6 +37,10 @@ const DEFAULT_INSPECT_FEISHU_VIEW_ID = 'vewgfEzEZl';
 const DEFAULT_RISK_PATH = '/api/ab-bpm/biz/bizCustGrid/view/list_fxgl_xcydfxpcmxsjlb';
 const DEFAULT_RECORD_LIST_PATH = '/api/ab-bpm/biz/bizCustGrid/view/fxgl_xcydfxpcjlsjlb';
 const DEFAULT_FEISHU_NOTIFY_CHAT_ID = 'oc_3bc648b9b761f24a65366a9b04b32eb2';
+const LEGACY_FEISHU_NOTIFY_CHAT_IDS = new Set([
+  'oc_9961bb057de8bd715447559c5e63c4f2',
+  'oc_38825452b566a9c8d5859d54eb31a64c',
+]);
 
 loadDotEnv();
 
@@ -519,14 +523,22 @@ function getRiskRecordListPathCandidates() {
   return candidates;
 }
 
+function normalizeFeishuNotifyChatId(value) {
+  const chatId = String(value || '').trim();
+  if (!chatId) {
+    return '';
+  }
+  return LEGACY_FEISHU_NOTIFY_CHAT_IDS.has(chatId) ? DEFAULT_FEISHU_NOTIFY_CHAT_ID : chatId;
+}
+
 function resolveFeishuNotifyChatId(...candidates) {
   for (const candidate of candidates) {
-    const value = String(candidate || '').trim();
+    const value = normalizeFeishuNotifyChatId(candidate);
     if (value) {
       return value;
     }
   }
-  return String(process.env.FEISHU_NOTIFY_CHAT_ID || DEFAULT_FEISHU_NOTIFY_CHAT_ID).trim();
+  return normalizeFeishuNotifyChatId(process.env.FEISHU_NOTIFY_CHAT_ID) || DEFAULT_FEISHU_NOTIFY_CHAT_ID;
 }
 
 function createChangeFeishuClient(table, overrides = {}) {
@@ -541,7 +553,9 @@ function createChangeFeishuClient(table, overrides = {}) {
     appToken: process.env.CHANGE_FEISHU_BITABLE_APP_TOKEN || DEFAULT_CHANGE_FEISHU_APP_TOKEN,
     tableId,
     viewId: process.env.CHANGE_FEISHU_BASIC_DATA_VIEW_ID || DEFAULT_CHANGE_FEISHU_VIEW_ID,
-    notifyChatId: overrides.notifyChatId ?? resolveFeishuNotifyChatId(process.env.CHANGE_FEISHU_NOTIFY_CHAT_ID),
+    notifyChatId: overrides.notifyChatId == null
+      ? resolveFeishuNotifyChatId(process.env.CHANGE_FEISHU_NOTIFY_CHAT_ID)
+      : normalizeFeishuNotifyChatId(overrides.notifyChatId),
     notifyChatName: overrides.notifyChatName ?? (process.env.CHANGE_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || ''),
   });
 }
@@ -567,7 +581,9 @@ function createEventFeishuClient(overrides = {}) {
     appToken: process.env.EVENT_FEISHU_BITABLE_APP_TOKEN || DEFAULT_EVENT_FEISHU_APP_TOKEN,
     tableId: process.env.EVENT_FEISHU_TABLE_ID || DEFAULT_EVENT_FEISHU_TABLE_ID,
     viewId: process.env.EVENT_FEISHU_VIEW_ID || DEFAULT_EVENT_FEISHU_VIEW_ID,
-    notifyChatId: overrides.notifyChatId ?? resolveFeishuNotifyChatId(process.env.EVENT_FEISHU_NOTIFY_CHAT_ID),
+    notifyChatId: overrides.notifyChatId == null
+      ? resolveFeishuNotifyChatId(process.env.EVENT_FEISHU_NOTIFY_CHAT_ID)
+      : normalizeFeishuNotifyChatId(overrides.notifyChatId),
     notifyChatName: overrides.notifyChatName ?? (process.env.EVENT_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || ''),
   });
 }
@@ -580,7 +596,9 @@ function createInspectFeishuClient(overrides = {}) {
     appToken: process.env.INSPECT_FEISHU_BITABLE_APP_TOKEN || DEFAULT_INSPECT_FEISHU_APP_TOKEN,
     tableId: process.env.INSPECT_FEISHU_TABLE_ID || DEFAULT_INSPECT_FEISHU_TABLE_ID,
     viewId: process.env.INSPECT_FEISHU_VIEW_ID || DEFAULT_INSPECT_FEISHU_VIEW_ID,
-    notifyChatId: overrides.notifyChatId ?? resolveFeishuNotifyChatId(process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID),
+    notifyChatId: overrides.notifyChatId == null
+      ? resolveFeishuNotifyChatId(process.env.INSPECT_FEISHU_NOTIFY_CHAT_ID)
+      : normalizeFeishuNotifyChatId(overrides.notifyChatId),
     notifyChatName: overrides.notifyChatName ?? (process.env.INSPECT_FEISHU_NOTIFY_CHAT_NAME || process.env.FEISHU_NOTIFY_CHAT_NAME || ''),
   });
 }
@@ -6506,7 +6524,10 @@ function buildInspectSyncSummary(records, options = {}) {
   const todayEndedUnsubmittedCount = todayUnsubmittedGroups.endedUnsubmitted.length;
   const todayUnsubmittedSummary = formatInspectTodayUnsubmittedGroupedSummary(todayUnsubmittedGroups);
   const yesterdayAbnormalRecords = getYesterdayInspectAbnormalRecords(items, now);
-  const yesterdayAbnormalSummary = formatInspectYesterdayAbnormalSummary(yesterdayAbnormalRecords, now);
+  const yesterdayAbnormalCount = yesterdayAbnormalRecords.length;
+  const yesterdayAbnormalSummary = yesterdayAbnormalCount > 0
+    ? formatInspectYesterdayAbnormalSummary(yesterdayAbnormalRecords, now)
+    : '昨日无异常';
   const missedUnsubmittedRecords = items
     .filter((record) => isMissedUnsubmittedInspectRecord(record, now))
     .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
@@ -6517,7 +6538,7 @@ function buildInspectSyncSummary(records, options = {}) {
   const rangeText = `${options.rangeStart || ''} - ${options.rangeEnd || ''}`.trim();
   const linkUrl = getInspectBitableWebUrl();
   const tips = [
-    yesterdayAbnormalRecords.length > 0 ? `昨日异常项 ${yesterdayAbnormalRecords.length} 单，请复盘闭环` : '',
+    yesterdayAbnormalCount > 0 ? `昨日异常项 ${yesterdayAbnormalCount} 单，请复盘闭环` : '',
     todayEndedUnsubmittedCount > 0 ? `今日已到巡检结束还未提交 ${todayEndedUnsubmittedCount} 单，请立即跟进` : '',
     missedUnsubmittedRecords.length > 0 ? `逾班未提交 ${missedUnsubmittedRecords.length} 单，已计入异常项，请优先处理` : '',
     todayUnsubmittedCount > 0 ? `今日未提交 ${todayUnsubmittedCount} 单：${todayUnsubmittedGroupSummary}` : '',
@@ -6531,12 +6552,12 @@ function buildInspectSyncSummary(records, options = {}) {
   ].filter(Boolean).join('；');
 
   return {
-    hasImportant: abnormalTotal > 0 || yesterdayAbnormalRecords.length > 0 || todayEndedUnsubmittedCount > 0,
+    hasImportant: abnormalTotal > 0 || yesterdayAbnormalCount > 0 || todayEndedUnsubmittedCount > 0,
     abnormalTotal,
     missedUnsubmittedCount: missedUnsubmittedRecords.length,
     notifyMessage: buildSyncCardMessage({
       title: '巡检拉取同步',
-      template: (abnormalTotal + missedUnsubmittedRecords.length + yesterdayAbnormalRecords.length + todayEndedUnsubmittedCount) > 0 ? 'red' : ((todayUnsubmittedCount + pendingCount) > 0 ? 'yellow' : 'green'),
+      template: (abnormalTotal + missedUnsubmittedRecords.length + yesterdayAbnormalCount + todayEndedUnsubmittedCount) > 0 ? 'red' : ((todayUnsubmittedCount + pendingCount) > 0 ? 'yellow' : 'green'),
       fallbackLines: [
         '【巡检拉取同步】',
         `同步时间：${syncTime}`,
@@ -6544,7 +6565,7 @@ function buildInspectSyncSummary(records, options = {}) {
         `覆盖工单：${items.length} 条`,
         distributionLine ? `分布概览：${distributionLine}` : '',
         todayUnsubmittedGroupSummary ? `今日未提交分组：${todayUnsubmittedGroupSummary}` : '',
-        yesterdayAbnormalSummary ? `昨日异常项：\n${yesterdayAbnormalSummary}` : '',
+        `昨日异常项：\n${yesterdayAbnormalSummary}`,
         missedUnsubmittedSummary ? `异常未提交：\n${missedUnsubmittedSummary}` : '',
         todayUnsubmittedSummary ? `今日未提交：\n${todayUnsubmittedSummary}` : '',
         tips ? `提示：\n${tips}` : '',
@@ -6556,7 +6577,7 @@ function buildInspectSyncSummary(records, options = {}) {
         rangeText ? `**本月范围**：${escapeFeishuCardMarkdown(rangeText)}` : '',
         `**覆盖工单**：${items.length} 条`,
         distributionLine ? `**分布概览**：${escapeFeishuCardMarkdown(distributionLine)}` : '',
-        yesterdayAbnormalRecords.length > 0 ? `**昨日异常项**：${yesterdayAbnormalRecords.length} 单` : '',
+        `**昨日异常项**：${yesterdayAbnormalCount > 0 ? `${yesterdayAbnormalCount} 单` : '昨日无异常'}`,
         missedUnsubmittedRecords.length > 0 ? `**异常未提交**：${missedUnsubmittedRecords.length} 单` : '',
         todayUnsubmittedCount > 0 ? `**今日未提交**：${todayUnsubmittedCount} 单（${escapeFeishuCardMarkdown(todayUnsubmittedGroupSummary)}）` : '',
         `**多维表**：[打开](${linkUrl})`,
@@ -6570,7 +6591,7 @@ function buildInspectSyncSummary(records, options = {}) {
       ],
     }),
     successMessage: ({ insertedCount, deletedCount }) => (
-      `巡检本月同步完成：删除旧记录 ${deletedCount} 条，覆盖写入 ${insertedCount} 条，本月完成 ${completedCount} 条，待巡检 ${pendingCount} 条，今日未提交 ${todayUnsubmittedCount} 条（${todayUnsubmittedGroupSummary || '无'}），昨日异常 ${yesterdayAbnormalRecords.length} 条，逾班未提交 ${missedUnsubmittedRecords.length} 条，异常点 ${abnormalTotal}（含逾期/逾班未提交）`
+      `巡检本月同步完成：删除旧记录 ${deletedCount} 条，覆盖写入 ${insertedCount} 条，本月完成 ${completedCount} 条，待巡检 ${pendingCount} 条，今日未提交 ${todayUnsubmittedCount} 条（${todayUnsubmittedGroupSummary || '无'}），昨日异常 ${yesterdayAbnormalCount} 条，逾班未提交 ${missedUnsubmittedRecords.length} 条，异常点 ${abnormalTotal}（含逾期/逾班未提交）`
     ),
   };
 }
