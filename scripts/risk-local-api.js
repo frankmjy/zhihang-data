@@ -3127,6 +3127,15 @@ function escapeFeishuCardMarkdown(value) {
     .replace(/>/g, '＞');
 }
 
+function colorFeishuCardMarkdown(escapedContent, color = 'red') {
+  const content = String(escapedContent || '').trim();
+  return content ? `<font color="${color}">${content}</font>` : '';
+}
+
+function escapeColoredFeishuCardMarkdown(value, color = 'red') {
+  return colorFeishuCardMarkdown(escapeFeishuCardMarkdown(value), color);
+}
+
 function formatChangeAlertBadge(level, rich = false) {
   const important = level === CHANGE_ALERT_LEVEL_IMPORTANT;
   if (!rich) {
@@ -6331,11 +6340,26 @@ function formatInspectRecordSummaryLine(record, index, options = {}) {
 function formatInspectRecordListSummary(records, limit = 20, options = {}) {
   const items = Array.isArray(records) ? records : [];
   const maxItems = Math.max(1, Number(limit) || 20);
+  const rich = Boolean(options.rich);
   const lines = items
     .slice(0, maxItems)
-    .map((record, index) => formatInspectRecordSummaryLine(record, index, options));
+    .map((record, index) => {
+      const line = formatInspectRecordSummaryLine(record, index, options);
+      if (!rich) {
+        return line;
+      }
+      const color = typeof options.lineColorGetter === 'function'
+        ? options.lineColorGetter(record, index)
+        : options.lineColor;
+      return color
+        ? escapeColoredFeishuCardMarkdown(line, color)
+        : escapeFeishuCardMarkdown(line);
+    });
   if (items.length > maxItems) {
-    lines.push(`另有 ${items.length - maxItems} 单未展开`);
+    const moreLine = `另有 ${items.length - maxItems} 单未展开`;
+    lines.push(rich && options.lineColor
+      ? escapeColoredFeishuCardMarkdown(moreLine, options.lineColor)
+      : (rich ? escapeFeishuCardMarkdown(moreLine) : moreLine));
   }
 
   return lines.join('\n');
@@ -6406,19 +6430,34 @@ function formatInspectTodayGroupCountSummary(groups) {
     .join('、');
 }
 
-function formatInspectTodayUnsubmittedGroupedSummary(groups, limitPerGroup = 12) {
+function formatInspectTodayUnsubmittedGroupedSummary(groups, limitPerGroup = 12, options = {}) {
+  const rich = Boolean(options.rich);
+  const redGroupKeys = options.redGroupKeys || new Set(['endedUnsubmitted']);
   return INSPECT_TODAY_UNSUBMITTED_GROUPS
     .map((group) => {
       const items = Array.isArray(groups?.[group.key]) ? groups[group.key] : [];
       if (items.length === 0) return '';
-      return `【${group.title}】${items.length} 单\n${formatInspectRecordListSummary(items, limitPerGroup)}`;
+      const highlight = rich && redGroupKeys.has(group.key);
+      const titleLine = `【${group.title}】${items.length} 单`;
+      const formattedTitle = highlight
+        ? escapeColoredFeishuCardMarkdown(titleLine, 'red')
+        : (rich ? escapeFeishuCardMarkdown(titleLine) : titleLine);
+      const formattedItems = formatInspectRecordListSummary(items, limitPerGroup, {
+        rich,
+        lineColor: highlight ? 'red' : '',
+      });
+      return `${formattedTitle}\n${formattedItems}`;
     })
     .filter(Boolean)
     .join('\n\n');
 }
 
-function formatInspectMissedUnsubmittedSummary(records, now = new Date(), limit = 20) {
-  return formatInspectRecordListSummary(records, limit, { includeReason: true, now });
+function formatInspectMissedUnsubmittedSummary(records, now = new Date(), limit = 20, options = {}) {
+  return formatInspectRecordListSummary(records, limit, {
+    includeReason: true,
+    now,
+    ...options,
+  });
 }
 
 function isYesterdayInspectAbnormalRecord(record, now = new Date()) {
@@ -6439,11 +6478,12 @@ function getYesterdayInspectAbnormalRecords(records, now = new Date()) {
     .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
 }
 
-function formatInspectYesterdayAbnormalSummary(records, now = new Date(), limit = 20) {
+function formatInspectYesterdayAbnormalSummary(records, now = new Date(), limit = 20, options = {}) {
   return formatInspectRecordListSummary(records, limit, {
     includeReason: true,
     now,
     reasonGetter: getInspectYesterdayAbnormalReasonText,
+    ...options,
   });
 }
 
@@ -6530,15 +6570,26 @@ function buildInspectSyncSummary(records, options = {}) {
     : '';
   const todayEndedUnsubmittedCount = todayUnsubmittedGroups.endedUnsubmitted.length;
   const todayUnsubmittedSummary = formatInspectTodayUnsubmittedGroupedSummary(todayUnsubmittedGroups);
+  const todayUnsubmittedCardSummary = formatInspectTodayUnsubmittedGroupedSummary(todayUnsubmittedGroups, 12, {
+    rich: true,
+    redGroupKeys: new Set(['endedUnsubmitted']),
+  });
   const yesterdayAbnormalRecords = getYesterdayInspectAbnormalRecords(items, now);
   const yesterdayAbnormalCount = yesterdayAbnormalRecords.length;
   const yesterdayAbnormalSummary = yesterdayAbnormalCount > 0
     ? formatInspectYesterdayAbnormalSummary(yesterdayAbnormalRecords, now)
     : '昨日无异常';
+  const yesterdayAbnormalCardSummary = yesterdayAbnormalCount > 0
+    ? formatInspectYesterdayAbnormalSummary(yesterdayAbnormalRecords, now, 20, { rich: true, lineColor: 'red' })
+    : escapeFeishuCardMarkdown('昨日无异常');
   const missedUnsubmittedRecords = items
     .filter((record) => isMissedUnsubmittedInspectRecord(record, now))
     .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
   const missedUnsubmittedSummary = formatInspectMissedUnsubmittedSummary(missedUnsubmittedRecords, now);
+  const missedUnsubmittedCardSummary = formatInspectMissedUnsubmittedSummary(missedUnsubmittedRecords, now, 20, {
+    rich: true,
+    lineColor: 'red',
+  });
   const statusSummary = formatCounterSummary(statusCounter, 0);
   const buildingSummary = formatInspectBuildingSummary(buildingStatsMap);
   const syncTime = formatChangeSyncTime();
@@ -6584,15 +6635,18 @@ function buildInspectSyncSummary(records, options = {}) {
         rangeText ? `**本月范围**：${escapeFeishuCardMarkdown(rangeText)}` : '',
         `**覆盖工单**：${items.length} 条`,
         distributionLine ? `**分布概览**：${escapeFeishuCardMarkdown(distributionLine)}` : '',
-        `**昨日异常项**：${yesterdayAbnormalCount > 0 ? `${yesterdayAbnormalCount} 单` : '昨日无异常'}`,
-        missedUnsubmittedRecords.length > 0 ? `**异常未提交**：${missedUnsubmittedRecords.length} 单` : '',
+        yesterdayAbnormalCount > 0
+          ? `<font color="red">**昨日异常项**：${yesterdayAbnormalCount} 单</font>`
+          : `**昨日异常项**：昨日无异常`,
+        missedUnsubmittedRecords.length > 0 ? `<font color="red">**异常未提交**：${missedUnsubmittedRecords.length} 单</font>` : '',
+        todayEndedUnsubmittedCount > 0 ? `<font color="red">**今日结束未提交**：${todayEndedUnsubmittedCount} 单</font>` : '',
         todayUnsubmittedCount > 0 ? `**今日未提交**：${todayUnsubmittedCount} 单（${escapeFeishuCardMarkdown(todayUnsubmittedGroupSummary)}）` : '',
         `**多维表**：[打开](${linkUrl})`,
       ],
       sections: [
-        { title: '昨日异常项（重点）', content: escapeFeishuCardMarkdown(yesterdayAbnormalSummary) },
-        { title: '今日未提交分组', content: escapeFeishuCardMarkdown(todayUnsubmittedSummary) },
-        { title: '逾班未提交', content: escapeFeishuCardMarkdown(missedUnsubmittedSummary) },
+        { title: '昨日异常项（重点）', content: yesterdayAbnormalCardSummary },
+        { title: '今日未提交分组', content: todayUnsubmittedCardSummary },
+        { title: '逾班未提交', content: missedUnsubmittedCardSummary },
         { title: '提示', content: escapeFeishuCardMarkdown(tips) },
         { title: '楼栋进展', content: escapeFeishuCardMarkdown(buildingSummary) },
       ],
