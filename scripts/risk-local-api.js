@@ -6251,6 +6251,10 @@ function isTodayUnsubmittedInspectRecord(record, now = new Date()) {
   return !hasInspectSubmitTime(record) && isInspectPlanOverlappingDay(record, now);
 }
 
+function isTodayCompletedInspectRecord(record, now = new Date()) {
+  return isCompletedInspectRecord(record) && isInspectPlanOverlappingDay(record, now);
+}
+
 function getInspectNoticePlanRange(record) {
   const start = getInspectPlanStartDate(record);
   const end = getInspectPlanEndDate(record);
@@ -6560,6 +6564,7 @@ function buildInspectSyncSummary(records, options = {}) {
 
   const pendingCount = items.filter(isPendingInspectRecord).length;
   const completedCount = items.filter(isCompletedInspectRecord).length;
+  const todayCompletedCount = items.filter((record) => isTodayCompletedInspectRecord(record, now)).length;
   const todayUnsubmittedRecords = items
     .filter((record) => isTodayUnsubmittedInspectRecord(record, now))
     .sort((left, right) => String(left?.planStartDatetime || '').localeCompare(String(right?.planStartDatetime || ''), 'zh-CN'));
@@ -6568,6 +6573,7 @@ function buildInspectSyncSummary(records, options = {}) {
   const todayUnsubmittedGroupSummary = todayUnsubmittedCount > 0
     ? formatInspectTodayGroupCountSummary(todayUnsubmittedGroups)
     : '';
+  const todayExecutionSummary = `已完成 ${todayCompletedCount} 单，未提交 ${todayUnsubmittedCount} 单${todayUnsubmittedGroupSummary ? `（${todayUnsubmittedGroupSummary}）` : ''}`;
   const todayEndedUnsubmittedCount = todayUnsubmittedGroups.endedUnsubmitted.length;
   const todayUnsubmittedSummary = formatInspectTodayUnsubmittedGroupedSummary(todayUnsubmittedGroups);
   const todayUnsubmittedCardSummary = formatInspectTodayUnsubmittedGroupedSummary(todayUnsubmittedGroups, 12, {
@@ -6599,7 +6605,7 @@ function buildInspectSyncSummary(records, options = {}) {
     yesterdayAbnormalCount > 0 ? `昨日异常项 ${yesterdayAbnormalCount} 单，请复盘闭环` : '',
     todayEndedUnsubmittedCount > 0 ? `今日已到巡检结束还未提交 ${todayEndedUnsubmittedCount} 单，请立即跟进` : '',
     missedUnsubmittedRecords.length > 0 ? `逾班未提交 ${missedUnsubmittedRecords.length} 单，已计入异常项，请优先处理` : '',
-    todayUnsubmittedCount > 0 ? `今日未提交 ${todayUnsubmittedCount} 单：${todayUnsubmittedGroupSummary}` : '',
+    `今日执行：${todayExecutionSummary}`,
     pendingCount > 0 ? `本月待巡检 ${pendingCount} 单，请关注计划执行` : '',
     abnormalTotal > 0 ? `本月异常点 ${abnormalTotal} 个（含逾期/逾班未提交工单），请关注巡检结果` : '',
   ].filter(Boolean).join('\n');
@@ -6622,7 +6628,7 @@ function buildInspectSyncSummary(records, options = {}) {
         rangeText ? `本月范围：${rangeText}` : '',
         `覆盖工单：${items.length} 条`,
         distributionLine ? `分布概览：${distributionLine}` : '',
-        todayUnsubmittedGroupSummary ? `今日未提交分组：${todayUnsubmittedGroupSummary}` : '',
+        `今日执行：${todayExecutionSummary}`,
         `昨日异常项：\n${yesterdayAbnormalSummary}`,
         missedUnsubmittedSummary ? `异常未提交：\n${missedUnsubmittedSummary}` : '',
         todayUnsubmittedSummary ? `今日未提交：\n${todayUnsubmittedSummary}` : '',
@@ -6635,6 +6641,7 @@ function buildInspectSyncSummary(records, options = {}) {
         rangeText ? `**本月范围**：${escapeFeishuCardMarkdown(rangeText)}` : '',
         `**覆盖工单**：${items.length} 条`,
         distributionLine ? `**分布概览**：${escapeFeishuCardMarkdown(distributionLine)}` : '',
+        `**今日执行**：${escapeFeishuCardMarkdown(todayExecutionSummary)}`,
         yesterdayAbnormalCount > 0
           ? `<font color="red">**昨日异常项**：${yesterdayAbnormalCount} 单</font>`
           : `**昨日异常项**：昨日无异常`,
@@ -6652,7 +6659,7 @@ function buildInspectSyncSummary(records, options = {}) {
       ],
     }),
     successMessage: ({ insertedCount, deletedCount }) => (
-      `巡检本月同步完成：删除旧记录 ${deletedCount} 条，覆盖写入 ${insertedCount} 条，本月完成 ${completedCount} 条，待巡检 ${pendingCount} 条，今日未提交 ${todayUnsubmittedCount} 条（${todayUnsubmittedGroupSummary || '无'}），昨日异常 ${yesterdayAbnormalCount} 条，逾班未提交 ${missedUnsubmittedRecords.length} 条，异常点 ${abnormalTotal}（含逾期/逾班未提交）`
+      `巡检本月同步完成：删除旧记录 ${deletedCount} 条，覆盖写入 ${insertedCount} 条，本月完成 ${completedCount} 条，待巡检 ${pendingCount} 条，今日已完成 ${todayCompletedCount} 条，今日未提交 ${todayUnsubmittedCount} 条（${todayUnsubmittedGroupSummary || '无'}），昨日异常 ${yesterdayAbnormalCount} 条，逾班未提交 ${missedUnsubmittedRecords.length} 条，异常点 ${abnormalTotal}（含逾期/逾班未提交）`
     ),
   };
 }
